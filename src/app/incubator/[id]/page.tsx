@@ -5,10 +5,10 @@ import { useRouter } from 'next/navigation';
 import AppShell from '@/components/AppShell';
 import { Card, Badge, Modal, LoadingSpinner, ConfirmDialog } from '@/components/ui';
 import { db, getSettings } from '@/lib/db';
-import type { IncubatorBatch, Settings } from '@/lib/types';
+import type { IncubatorBatch, Settings, BatchStatus } from '@/lib/types';
 import { BATCH_STATUS_LABELS, INCUBATOR_STANDARDS } from '@/lib/types';
 import { formatCurrency, formatDate, formatPercent, getIncubatorDay, getIncubatorPhase, addDays, generateBatchCode, todayISO, cn } from '@/lib/utils';
-import { ArrowRight, Thermometer, Droplets, RotateCcw, Eye, Calendar, ChevronLeft, AlertTriangle, CheckCircle2, Truck } from 'lucide-react';
+import { ArrowRight, Thermometer, Droplets, RotateCcw, Eye, AlertTriangle, CheckCircle2, Truck, Edit2, Trash2 } from 'lucide-react';
 
 export default function IncubatorDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -16,11 +16,31 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
   const [batch, setBatch] = useState<IncubatorBatch | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Modals
   const [showCandling, setShowCandling] = useState(false);
   const [showHatch, setShowHatch] = useState(false);
   const [showTransfer, setShowTransfer] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+
+  // Forms
   const [candlingForm, setCandlingForm] = useState({ fertilizedCount: 0 });
   const [hatchForm, setHatchForm] = useState({ hatchedChicks: 0, spoiledEggs: 0 });
+  const [editForm, setEditForm] = useState({
+    batchCode: '',
+    startDate: '',
+    eggCount: 0,
+    eggSource: 'external' as 'internal' | 'external',
+    eggCost: 0,
+    electricityCost: 0,
+    cleaningCost: 0,
+    status: 'incubating' as BatchStatus,
+    fertilizedCount: undefined as number | undefined,
+    hatchedChicks: undefined as number | undefined,
+    spoiledEggs: undefined as number | undefined,
+    notes: '',
+  });
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -32,6 +52,20 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
       setBatch(b);
       setCandlingForm({ fertilizedCount: b.fertilizedCount || 0 });
       setHatchForm({ hatchedChicks: b.hatchedChicks || 0, spoiledEggs: b.spoiledEggs || 0 });
+      setEditForm({
+        batchCode: b.batchCode,
+        startDate: b.startDate,
+        eggCount: b.eggCount,
+        eggSource: b.eggSource,
+        eggCost: b.eggCost,
+        electricityCost: b.electricityCost,
+        cleaningCost: b.cleaningCost,
+        status: b.status,
+        fertilizedCount: b.fertilizedCount,
+        hatchedChicks: b.hatchedChicks,
+        spoiledEggs: b.spoiledEggs,
+        notes: b.notes || '',
+      });
     }
     setLoading(false);
   }
@@ -65,6 +99,44 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
     loadData();
   }
 
+  async function saveEdit() {
+    if (!batch?.id) return;
+    const fertilized = editForm.fertilizedCount !== undefined ? Number(editForm.fertilizedCount) : undefined;
+    const fertilityRate = fertilized !== undefined && editForm.eggCount > 0 ? (fertilized / editForm.eggCount) * 100 : undefined;
+    const hatched = editForm.hatchedChicks !== undefined ? Number(editForm.hatchedChicks) : undefined;
+    const hatchRate = hatched !== undefined && fertilized ? (hatched / fertilized) * 100 : undefined;
+    const totalCost = Number(editForm.eggCost) + Number(editForm.electricityCost) + Number(editForm.cleaningCost);
+    const costPerChick = hatched && hatched > 0 ? totalCost / hatched : undefined;
+
+    await db.incubatorBatches.update(batch.id, {
+      batchCode: editForm.batchCode,
+      startDate: editForm.startDate,
+      eggCount: Number(editForm.eggCount),
+      eggSource: editForm.eggSource,
+      eggCost: Number(editForm.eggCost),
+      electricityCost: Number(editForm.electricityCost),
+      cleaningCost: Number(editForm.cleaningCost),
+      status: editForm.status,
+      fertilizedCount: fertilized,
+      fertilityRate: fertilityRate !== undefined ? Math.round(fertilityRate * 10) / 10 : undefined,
+      hatchedChicks: hatched,
+      spoiledEggs: editForm.spoiledEggs !== undefined ? Number(editForm.spoiledEggs) : undefined,
+      hatchRate: hatchRate !== undefined ? Math.round(hatchRate * 10) / 10 : undefined,
+      totalCost,
+      costPerChick: costPerChick !== undefined ? Math.round(costPerChick * 100) / 100 : undefined,
+      notes: editForm.notes,
+    });
+
+    setShowEdit(false);
+    loadData();
+  }
+
+  async function deleteBatch() {
+    if (!batch?.id) return;
+    await db.incubatorBatches.delete(batch.id);
+    router.push('/incubator');
+  }
+
   async function transferToRearing() {
     if (!batch?.id || !batch.hatchedChicks) return;
     const rearingId = await db.rearingBatches.add({
@@ -88,7 +160,6 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
 
   const sym = settings?.currencySymbol || 'د.م';
   const day = getIncubatorDay(batch.startDate);
-  const phase = getIncubatorPhase(day);
   const totalCost = (batch.eggCost || 0) + batch.electricityCost + batch.cleaningCost;
   const day7 = addDays(batch.startDate, 6);
   const day18 = addDays(batch.startDate, 17);
@@ -98,11 +169,29 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
 
   return (
     <AppShell>
-      {/* Back button & Header */}
-      <button onClick={() => router.push('/incubator')} className="flex items-center gap-1 text-blue-600 hover:text-blue-800 mb-4 text-sm font-medium">
-        <ArrowRight className="w-4 h-4" />
-        العودة للقائمة
-      </button>
+      {/* Back button & Actions Bar */}
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={() => router.push('/incubator')} className="flex items-center gap-1 text-blue-600 hover:text-blue-800 text-sm font-medium">
+          <ArrowRight className="w-4 h-4" />
+          العودة لقائمة الفقاسة
+        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowEdit(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg text-sm font-medium transition"
+          >
+            <Edit2 className="w-4 h-4" />
+            تعديل المعطيات
+          </button>
+          <button
+            onClick={() => setShowDelete(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg text-sm font-medium transition"
+          >
+            <Trash2 className="w-4 h-4" />
+            حذف الدفعة
+          </button>
+        </div>
+      </div>
 
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <h1 className="text-2xl font-bold text-slate-800">الدفعة {batch.batchCode}</h1>
@@ -118,7 +207,6 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
             <h2 className="font-bold text-slate-800">الشريط الزمني</h2>
             <span className="text-lg font-bold text-blue-600">اليوم {day} / 21</span>
           </div>
-          {/* Visual timeline */}
           <div className="relative mb-4">
             <div className="w-full bg-slate-100 rounded-full h-4">
               <div
@@ -126,7 +214,6 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
                 style={{ width: `${Math.min((day / 21) * 100, 100)}%` }}
               />
             </div>
-            {/* Markers */}
             <div className="flex justify-between mt-2 text-xs text-slate-500">
               <span>اليوم 1</span>
               <span className={cn(day >= 7 ? 'text-blue-600 font-bold' : '')}>فحص (7)</span>
@@ -183,9 +270,12 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
             <div>
               <p className="text-sm">مخصب: <span className="font-bold text-emerald-700">{batch.fertilizedCount}</span> / {batch.eggCount}</p>
               <p className="text-sm">نسبة الإخصاب: <span className="font-bold text-blue-700">{formatPercent(batch.fertilityRate || 0)}</span></p>
+              <button onClick={() => setShowCandling(true)} className="mt-2 text-xs text-blue-600 hover:underline font-medium">
+                تعديل نتيجة الفحص
+              </button>
             </div>
           ) : (
-            <button onClick={() => setShowCandling(true)} disabled={day < 7 && batch.status === 'incubating'} className={cn('mt-2 w-full py-2 rounded-lg text-sm font-medium transition', day >= 7 || batch.status !== 'incubating' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed')}>
+            <button onClick={() => setShowCandling(true)} className="mt-2 w-full py-2 rounded-lg text-sm font-medium transition bg-blue-600 text-white hover:bg-blue-700">
               تسجيل نتائج الفحص
             </button>
           )}
@@ -216,11 +306,14 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
           {batch.hatchedChicks !== undefined ? (
             <div>
               <p className="text-sm">🐣 كتاكيت سليمة: <span className="font-bold text-emerald-700">{batch.hatchedChicks}</span></p>
-              <p className="text-sm">❌ بيض تالف: <span className="font-bold text-red-600">{batch.spoiledEggs}</span></p>
+              <p className="text-sm">❌ بيض تالف: <span className="font-bold text-red-600">{batch.spoiledEggs || 0}</span></p>
               <p className="text-sm">نسبة الفقس: <span className="font-bold text-blue-700">{formatPercent(batch.hatchRate || 0)}</span></p>
+              <button onClick={() => setShowHatch(true)} className="mt-2 text-xs text-emerald-600 hover:underline font-medium">
+                تعديل نتيجة الفقس
+              </button>
             </div>
           ) : (
-            <button onClick={() => setShowHatch(true)} disabled={batch.status !== 'incubating' && batch.status !== 'hatched'} className={cn('mt-2 w-full py-2 rounded-lg text-sm font-medium transition', 'bg-emerald-600 text-white hover:bg-emerald-700')}>
+            <button onClick={() => setShowHatch(true)} className="mt-2 w-full py-2 rounded-lg text-sm font-medium transition bg-emerald-600 text-white hover:bg-emerald-700">
               تسجيل نتائج الفقس
             </button>
           )}
@@ -272,6 +365,89 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
         </Card>
       )}
 
+      {/* Full Edit Modal */}
+      <Modal isOpen={showEdit} onClose={() => setShowEdit(false)} title="تعديل معطيات الدفعة" size="md">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">رمز الدفعة</label>
+              <input type="text" value={editForm.batchCode} onChange={e => setEditForm(p => ({ ...p, batchCode: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ الوضع</label>
+              <input type="date" value={editForm.startDate} onChange={e => setEditForm(p => ({ ...p, startDate: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">عدد البيض الإجمالي</label>
+              <input type="number" value={editForm.eggCount} onChange={e => setEditForm(p => ({ ...p, eggCount: +e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">مصدر البيض</label>
+              <select value={editForm.eggSource} onChange={e => setEditForm(p => ({ ...p, eggSource: e.target.value as 'internal' | 'external' }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                <option value="external">شراء خارجي</option>
+                <option value="internal">إنتاج داخلي (المزرعة)</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">تكلفة البيض الإجمالية ({sym})</label>
+            <input type="number" step="0.1" value={editForm.eggCost} onChange={e => setEditForm(p => ({ ...p, eggCost: +e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">تكلفة الكهرباء ({sym})</label>
+              <input type="number" value={editForm.electricityCost} onChange={e => setEditForm(p => ({ ...p, electricityCost: +e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">تكلفة التنظيف ({sym})</label>
+              <input type="number" value={editForm.cleaningCost} onChange={e => setEditForm(p => ({ ...p, cleaningCost: +e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">الحالة</label>
+              <select value={editForm.status} onChange={e => setEditForm(p => ({ ...p, status: e.target.value as BatchStatus }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                <option value="incubating">في الفقاسة</option>
+                <option value="hatched">تم الفقس</option>
+                <option value="transferred">تم النقل للتربية</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">المخصب</label>
+              <input
+                type="number"
+                value={editForm.fertilizedCount ?? ''}
+                onChange={e => setEditForm(p => ({ ...p, fertilizedCount: e.target.value === '' ? undefined : +e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">الكتاكيت</label>
+              <input
+                type="number"
+                value={editForm.hatchedChicks ?? ''}
+                onChange={e => setEditForm(p => ({ ...p, hatchedChicks: e.target.value === '' ? undefined : +e.target.value }))}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">ملاحظات</label>
+            <textarea value={editForm.notes} onChange={e => setEditForm(p => ({ ...p, notes: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg" rows={2} />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button onClick={() => setShowEdit(false)} className="flex-1 py-3 border border-slate-300 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition">
+              إلغاء
+            </button>
+            <button onClick={saveEdit} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition">
+              حفظ التعديلات
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Candling Modal */}
       <Modal isOpen={showCandling} onClose={() => setShowCandling(false)} title="تسجيل نتائج الفحص الضوئي" size="sm">
         <div className="space-y-4">
@@ -308,6 +484,17 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
           <button onClick={saveHatch} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition">حفظ وتحديث الحالة</button>
         </div>
       </Modal>
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        isOpen={showDelete}
+        onClose={() => setShowDelete(false)}
+        onConfirm={deleteBatch}
+        title="حذف دفعة الفقاسة"
+        message={`هل أنت متأكد من حذف الدفعة "${batch.batchCode}" نهائياً؟ سيتم مسح بياناتها بالكامل.`}
+        confirmLabel="تأكيد الحذف"
+        confirmColor="red"
+      />
 
       {/* Transfer Confirmation */}
       <ConfirmDialog isOpen={showTransfer} onClose={() => setShowTransfer(false)} onConfirm={transferToRearing} title="تأكيد النقل" message={`سيتم إنشاء دفعة تربية جديدة مرتبطة بـ ${batch.hatchedChicks} كتكوت. هل تريد المتابعة؟`} confirmLabel="تحويل" />
