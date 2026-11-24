@@ -2,7 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { seedDatabase } from '@/lib/seed';
 import {
   LayoutDashboard,
   Egg,
@@ -31,6 +32,11 @@ const NAV_ITEMS = [
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    // التأكد من ملء البيانات الأولية تلقائياً في أي متصفح جديد
+    seedDatabase(false);
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden">
