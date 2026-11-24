@@ -7,7 +7,7 @@ import { db, getSettings } from '@/lib/db';
 import type { DailyProduction, Sale, Settings, SaleType } from '@/lib/types';
 import { SALE_TYPE_LABELS } from '@/lib/types';
 import { formatCurrency, formatPercent, formatNumber, formatDate, todayISO, getMonthKey, ARABIC_MONTHS, cn } from '@/lib/utils';
-import { Egg, ShoppingCart, Plus, Edit2, Trash2 } from 'lucide-react';
+import { Egg, ShoppingCart, Plus, Edit2, Trash2, CheckCircle2, PackageCheck } from 'lucide-react';
 
 export default function ProductionPage() {
   const [tab, setTab] = useState<'production' | 'sales'>('production');
@@ -36,6 +36,13 @@ export default function ProductionPage() {
     date: todayISO(), type: 'eggs' as SaleType, quantity: 0,
     unitType: 'tray' as 'unit' | 'tray', unitPrice: 45, buyerName: '', notes: '',
   });
+
+  // "تم البيع" (Sell Inventory) Modal state
+  const [showQuickSellModal, setShowQuickSellModal] = useState(false);
+  const [quickSellQuantity, setQuickSellQuantity] = useState(0);
+  const [quickSellUnitType, setQuickSellUnitType] = useState<'unit' | 'tray'>('tray');
+  const [quickSellUnitPrice, setQuickSellUnitPrice] = useState(45);
+  const [quickSellBuyer, setQuickSellBuyer] = useState('');
 
   useEffect(() => { loadData(); }, []);
 
@@ -147,9 +154,58 @@ export default function ProductionPage() {
     }
   }
 
+  // --- Quick "تم البيع" (Sell Current Eggs Stock) ---
+  function openQuickSell(availableEggs: number) {
+    const defaultTrayPrice = settings?.sellingPrices.tray || 45;
+    const defaultUnitPrice = settings?.sellingPrices.egg || 1.5;
+
+    // إذا كان المجموع 30 أو أكثر، نقترح البيع بالصواني
+    if (availableEggs >= 30) {
+      const trays = Math.floor(availableEggs / 30);
+      setQuickSellUnitType('tray');
+      setQuickSellQuantity(trays);
+      setQuickSellUnitPrice(defaultTrayPrice);
+    } else {
+      setQuickSellUnitType('unit');
+      setQuickSellQuantity(availableEggs > 0 ? availableEggs : 1);
+      setQuickSellUnitPrice(defaultUnitPrice);
+    }
+    setQuickSellBuyer('');
+    setShowQuickSellModal(true);
+  }
+
+  async function executeQuickSell() {
+    const total = quickSellQuantity * quickSellUnitPrice;
+    await db.sales.add({
+      date: todayISO(),
+      type: 'eggs',
+      quantity: Number(quickSellQuantity),
+      unitType: quickSellUnitType,
+      unitPrice: Number(quickSellUnitPrice),
+      total,
+      buyerName: quickSellBuyer || 'بيع مباشر',
+      notes: 'تم البيع السريع من المخزون الحالي',
+    });
+    setShowQuickSellModal(false);
+    loadData();
+  }
+
   if (loading) return <AppShell><LoadingSpinner /></AppShell>;
 
   const sym = settings?.currencySymbol || 'د.م';
+  const unitEggPrice = settings?.sellingPrices.egg || 1.5;
+  const trayEggPrice = settings?.sellingPrices.tray || 45;
+
+  // الحساب الشامل لمخزون البيض المتوفر للبيع (Total Saleable Eggs minus Total Eggs Sold)
+  const allTimeProducedNetSaleable = productions.reduce((s, p) => s + p.netSaleableEggs, 0);
+  const allTimeSoldEggsUnits = sales
+    .filter(s => s.type === 'eggs')
+    .reduce((s, sl) => s + (sl.unitType === 'tray' ? sl.quantity * 30 : sl.quantity), 0);
+  
+  const currentEggsStock = Math.max(0, allTimeProducedNetSaleable - allTimeSoldEggsUnits);
+  const currentStockEstimatedValue = currentEggsStock * unitEggPrice;
+
+  // فلترة حسب الشهر للعرض في الجدول
   const filteredProds = prodMonth ? productions.filter(p => getMonthKey(p.date) === prodMonth) : productions;
   const avgRate = filteredProds.length > 0 ? filteredProds.reduce((s, p) => s + p.productionRate, 0) / filteredProds.length : 0;
   const totalEggs = filteredProds.reduce((s, p) => s + p.totalEggsCollected, 0);
@@ -159,19 +215,72 @@ export default function ProductionPage() {
   if (salesMonth) filteredSales = filteredSales.filter(s => getMonthKey(s.date) === salesMonth);
   const totalSalesRevenue = filteredSales.reduce((s, sl) => s + sl.total, 0);
 
-  // Get unique months from data
   const prodMonths = [...new Set(productions.map(p => getMonthKey(p.date)))].sort().reverse();
   const saleMonths = [...new Set(sales.map(s => getMonthKey(s.date)))].sort().reverse();
 
   return (
     <AppShell>
+      {/* 🌟 بطاقة المخزون الفوري وسعر البيع وزر "تم البيع" 🌟 */}
+      <Card className="p-5 mb-6 bg-gradient-to-l from-blue-50 via-indigo-50/40 to-white border-blue-200">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-6">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-blue-600 text-white rounded-2xl shadow-sm">
+                <Egg className="w-7 h-7" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 font-medium">مجموع البيض الموجود حالياً (المخزون الجاهز)</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-extrabold text-blue-900">{formatNumber(currentEggsStock)}</span>
+                  <span className="text-sm text-blue-700 font-bold">بيضة</span>
+                  {currentEggsStock >= 30 && (
+                    <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full font-medium">
+                      ≈ {Math.floor(currentEggsStock / 30)} صينية و {currentEggsStock % 30} بيضة
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="h-10 w-[1px] bg-slate-200 hidden md:block" />
+
+            <div>
+              <p className="text-xs text-slate-500 font-medium">سعر البيع المعتمد</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-lg font-bold text-slate-800">{formatCurrency(unitEggPrice, sym)}</span>
+                <span className="text-xs text-slate-400">للبيضة</span>
+                <span className="text-slate-300">|</span>
+                <span className="text-lg font-bold text-slate-800">{formatCurrency(trayEggPrice, sym)}</span>
+                <span className="text-xs text-slate-400">للصينية (30)</span>
+              </div>
+            </div>
+
+            <div className="h-10 w-[1px] bg-slate-200 hidden md:block" />
+
+            <div>
+              <p className="text-xs text-slate-500 font-medium">القيمة المالية للمخزون الحالي</p>
+              <p className="text-lg font-extrabold text-emerald-700 mt-0.5">{formatCurrency(currentStockEstimatedValue, sym)}</p>
+            </div>
+          </div>
+
+          {/* زر "تم البيع" الرئيسي */}
+          <button
+            onClick={() => openQuickSell(currentEggsStock)}
+            className="w-full md:w-auto flex items-center justify-center gap-2.5 px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition transform active:scale-95 text-base"
+          >
+            <CheckCircle2 className="w-5 h-5" />
+            <span>تم البيع</span>
+          </button>
+        </div>
+      </Card>
+
       {/* Tabs */}
       <div className="flex gap-1 bg-slate-100 p-1 rounded-xl mb-6 w-fit">
         <button onClick={() => setTab('production')} className={cn('px-5 py-2 rounded-lg text-sm font-medium transition', tab === 'production' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700')}>
           <span className="flex items-center gap-2"><Egg className="w-4 h-4" />الإنتاج اليومي</span>
         </button>
         <button onClick={() => setTab('sales')} className={cn('px-5 py-2 rounded-lg text-sm font-medium transition', tab === 'sales' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700')}>
-          <span className="flex items-center gap-2"><ShoppingCart className="w-4 h-4" />المبيعات</span>
+          <span className="flex items-center gap-2"><ShoppingCart className="w-4 h-4" />سجل المبيعات</span>
         </button>
       </div>
 
@@ -224,8 +333,8 @@ export default function ProductionPage() {
           {/* Summary Stats */}
           <div className="grid grid-cols-3 gap-4 mb-6">
             <Card className="p-4 text-center"><p className="text-xs text-slate-500">متوسط الإنتاج</p><p className="text-xl font-bold text-blue-600">{formatPercent(avgRate)}</p></Card>
-            <Card className="p-4 text-center"><p className="text-xs text-slate-500">إجمالي البيض</p><p className="text-xl font-bold text-slate-800">{formatNumber(totalEggs)}</p></Card>
-            <Card className="p-4 text-center"><p className="text-xs text-slate-500">صافي للبيع</p><p className="text-xl font-bold text-emerald-600">{formatNumber(totalSaleable)}</p></Card>
+            <Card className="p-4 text-center"><p className="text-xs text-slate-500">إجمالي البيض المجموع</p><p className="text-xl font-bold text-slate-800">{formatNumber(totalEggs)}</p></Card>
+            <Card className="p-4 text-center"><p className="text-xs text-slate-500">صافي البيض المعد للبيع</p><p className="text-xl font-bold text-emerald-600">{formatNumber(totalSaleable)}</p></Card>
           </div>
 
           {/* Filter */}
@@ -364,10 +473,14 @@ export default function ProductionPage() {
       {tab === 'sales' && (
         <>
           {/* Quick Sale Button */}
-          <div className="mb-6">
+          <div className="mb-6 flex gap-3">
             <button onClick={openCreateSaleModal} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition">
               <Plus className="w-5 h-5" />
               تسجيل بيع جديد
+            </button>
+            <button onClick={() => openQuickSell(currentEggsStock)} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition">
+              <PackageCheck className="w-5 h-5" />
+              بيع من المخزون الحالي ({currentEggsStock} بيضة)
             </button>
           </div>
 
@@ -492,8 +605,8 @@ export default function ProductionPage() {
                   const price = ut === 'tray' ? (settings?.sellingPrices.tray || 45) : (settings?.sellingPrices.egg || 1.5);
                   setSaleForm(p => ({ ...p, unitType: ut, unitPrice: saleForm.type === 'eggs' ? price : p.unitPrice }));
                 }} className="w-full px-3 py-2 border border-slate-300 rounded-lg">
-                  <option value="unit">وحدة</option>
-                  <option value="tray">صينية (30)</option>
+                  <option value="unit">وحدة (بيضة)</option>
+                  <option value="tray">صينية (30 بيضة)</option>
                 </select>
               </div>
               <div>
@@ -530,6 +643,103 @@ export default function ProductionPage() {
           />
         </>
       )}
+
+      {/* 🚀 Modal "تم البيع" السريع 🚀 */}
+      <Modal isOpen={showQuickSellModal} onClose={() => setShowQuickSellModal(false)} title="تسجيل عملية البيع (تم البيع)" size="md">
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-xl p-3.5 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-blue-700 font-medium">البيض المتوفر حالياً بالمزرعة</p>
+              <p className="text-xl font-bold text-blue-950">{currentEggsStock} بيضة</p>
+            </div>
+            <div className="text-left text-xs text-blue-700">
+              <p>سعر البيضة: {formatCurrency(unitEggPrice, sym)}</p>
+              <p>سعر الصينية: {formatCurrency(trayEggPrice, sym)}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">طريقة البيع (الوحدة)</label>
+              <select
+                value={quickSellUnitType}
+                onChange={e => {
+                  const ut = e.target.value as 'unit' | 'tray';
+                  setQuickSellUnitType(ut);
+                  setQuickSellUnitPrice(ut === 'tray' ? trayEggPrice : unitEggPrice);
+                  if (ut === 'tray') {
+                    setQuickSellQuantity(Math.max(1, Math.floor(currentEggsStock / 30) || 1));
+                  } else {
+                    setQuickSellQuantity(currentEggsStock > 0 ? currentEggsStock : 1);
+                  }
+                }}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              >
+                <option value="tray">بالصينية (30 بيضة)</option>
+                <option value="unit">بالوحدة (بيضة مفرقة)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                الكمية المباعة ({quickSellUnitType === 'tray' ? 'صواني' : 'بيضات'})
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={quickSellQuantity}
+                onChange={e => setQuickSellQuantity(+e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">سعر البيع للـ {quickSellUnitType === 'tray' ? 'صينية' : 'بيضة'} ({sym})</label>
+              <input
+                type="number"
+                step="0.1"
+                value={quickSellUnitPrice}
+                onChange={e => setQuickSellUnitPrice(+e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">اسم المشتري / الزبون</label>
+              <input
+                type="text"
+                placeholder="اختياري (سوق، بقالة، شخص...)"
+                value={quickSellBuyer}
+                onChange={e => setQuickSellBuyer(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center">
+            <p className="text-xs text-emerald-700 font-medium mb-1">إجمالي المبلغ المحصل من البيع</p>
+            <p className="text-2xl font-black text-emerald-800">{formatCurrency(quickSellQuantity * quickSellUnitPrice, sym)}</p>
+            <p className="text-xs text-slate-500 mt-1">
+              (سيتم خصم {quickSellUnitType === 'tray' ? quickSellQuantity * 30 : quickSellQuantity} بيضة من المخزون وإضافتها لمداخيل المشروع)
+            </p>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => setShowQuickSellModal(false)}
+              className="flex-1 py-3 border border-slate-300 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition"
+            >
+              إلغاء
+            </button>
+            <button
+              onClick={executeQuickSell}
+              className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition shadow-md"
+            >
+              تأكيد وحفظ البيع ✓
+            </button>
+          </div>
+        </div>
+      </Modal>
     </AppShell>
   );
 }

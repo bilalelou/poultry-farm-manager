@@ -28,6 +28,7 @@ export default function DashboardPage() {
   const [activeHens, setActiveHens] = useState(0);
   const [avgProductionRate, setAvgProductionRate] = useState(0);
   const [totalEggsProduced, setTotalEggsProduced] = useState(0);
+  const [currentEggsStock, setCurrentEggsStock] = useState(0);
   const [latestBatch, setLatestBatch] = useState<IncubatorBatch | null>(null);
 
   // Chart data
@@ -70,6 +71,11 @@ export default function DashboardPage() {
         const avgRate = productions.reduce((sum, p) => sum + p.productionRate, 0) / productions.length;
         setAvgProductionRate(avgRate);
         setTotalEggsProduced(productions.reduce((sum, p) => sum + p.totalEggsCollected, 0));
+        const totalNetSaleable = productions.reduce((sum, p) => sum + p.netSaleableEggs, 0);
+        const totalSold = sales
+          .filter(s => s.type === 'eggs')
+          .reduce((sum, s) => sum + (s.unitType === 'tray' ? s.quantity * 30 : s.quantity), 0);
+        setCurrentEggsStock(Math.max(0, totalNetSaleable - totalSold));
         setEggForm(prev => ({ ...prev, activeHenCount: latest.activeHenCount }));
       }
 
@@ -174,7 +180,7 @@ export default function DashboardPage() {
         <KPICard title="إجمالي المصاريف" value={formatCurrency(totalExpenses, sym)} icon={<TrendingDown className="w-6 h-6" />} color="red" />
         <KPICard title="صافي الربح" value={formatCurrency(netProfit, sym)} icon={<TrendingUp className="w-6 h-6" />} color={netProfit >= 0 ? 'green' : 'red'} />
         <KPICard title="هامش الربح" value={formatPercent(profitMargin)} icon={<Percent className="w-6 h-6" />} color="amber" />
-        <KPICard title="تكلفة البيضة" value={formatCurrency(costPerEgg, sym)} icon={<Egg className="w-6 h-6" />} color="purple" />
+        <KPICard title="مخزون البيض حالياً" value={`${formatNumber(currentEggsStock)} بيضة`} subtitle={`سعر البيع: ${settings?.sellingPrices.egg || 1.5} ${sym}`} icon={<Egg className="w-6 h-6" />} color="purple" />
         <KPICard title="الدجاج البياض" value={formatNumber(activeHens)} subtitle="نشط حالياً" icon={<Bird className="w-6 h-6" />} color="blue" />
         <KPICard title="نسبة الإنتاج" value={formatPercent(avgProductionRate)} icon={<BarChart3 className="w-6 h-6" />} color="green" />
         <KPICard title="نقطة التعادل" value={breakEvenEggs > 0 ? `${formatNumber(breakEvenEggs)} بيضة` : '—'} icon={<Target className="w-6 h-6" />} color="amber" />
