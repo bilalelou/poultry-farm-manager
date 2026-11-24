@@ -2,19 +2,23 @@
 
 import { useState, useEffect } from 'react';
 import AppShell from '@/components/AppShell';
-import { Card, Badge, Modal, LoadingSpinner } from '@/components/ui';
+import { Card, Badge, Modal, LoadingSpinner, ConfirmDialog } from '@/components/ui';
 import { db, getSettings } from '@/lib/db';
 import type { Expense, Settings, ExpenseCategory } from '@/lib/types';
 import { EXPENSE_CATEGORY_LABELS, EXPENSE_SCOPE_LABELS, EXPENSE_TYPE_LABELS } from '@/lib/types';
 import { formatCurrency, formatDate, todayISO, getMonthKey, ARABIC_MONTHS, cn } from '@/lib/utils';
-import { Plus, Wallet, TrendingUp, TrendingDown } from 'lucide-react';
+import { Plus, Wallet, TrendingUp, Edit2, Trash2 } from 'lucide-react';
 
 export default function ExpensesPage() {
   const [tab, setTab] = useState<'expenses' | 'cashflow'>('expenses');
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+
+  // Modal states
   const [showForm, setShowForm] = useState(false);
+  const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
+  const [deleteExpenseId, setDeleteExpenseId] = useState<number | null>(null);
 
   // Filters
   const [filterScope, setFilterScope] = useState('');
@@ -24,10 +28,14 @@ export default function ExpensesPage() {
 
   // Form
   const [form, setForm] = useState({
-    date: todayISO(), scope: 'general' as 'general' | 'batch' | 'foundation',
+    date: todayISO(),
+    scope: 'general' as 'general' | 'batch' | 'foundation',
     type: 'operational' as 'operational' | 'capital',
     category: 'feed' as ExpenseCategory,
-    description: '', quantity: 1, unitPrice: 0, notes: '',
+    description: '',
+    quantity: 1,
+    unitPrice: 0,
+    notes: '',
   });
 
   // Cash flow
@@ -72,14 +80,60 @@ export default function ExpensesPage() {
     setLoading(false);
   }
 
-  async function saveExpense() {
-    await db.expenses.add({
-      ...form,
-      total: form.quantity * form.unitPrice,
+  function openCreateModal() {
+    setEditingExpenseId(null);
+    setForm({
+      date: todayISO(),
+      scope: 'general',
+      type: 'operational',
+      category: 'feed',
+      description: '',
+      quantity: 1,
+      unitPrice: 0,
+      notes: '',
     });
+    setShowForm(true);
+  }
+
+  function openEditModal(exp: Expense) {
+    setEditingExpenseId(exp.id || null);
+    setForm({
+      date: exp.date,
+      scope: exp.scope,
+      type: exp.type,
+      category: exp.category,
+      description: exp.description,
+      quantity: exp.quantity,
+      unitPrice: exp.unitPrice,
+      notes: exp.notes || '',
+    });
+    setShowForm(true);
+  }
+
+  async function saveExpense() {
+    const total = form.quantity * form.unitPrice;
+    if (editingExpenseId) {
+      await db.expenses.update(editingExpenseId, {
+        ...form,
+        total,
+      });
+    } else {
+      await db.expenses.add({
+        ...form,
+        total,
+      });
+    }
     setShowForm(false);
-    setForm({ date: todayISO(), scope: 'general', type: 'operational', category: 'feed', description: '', quantity: 1, unitPrice: 0, notes: '' });
+    setEditingExpenseId(null);
     loadData();
+  }
+
+  async function confirmDeleteExpense() {
+    if (deleteExpenseId) {
+      await db.expenses.delete(deleteExpenseId);
+      setDeleteExpenseId(null);
+      loadData();
+    }
   }
 
   if (loading) return <AppShell><LoadingSpinner /></AppShell>;
@@ -115,9 +169,9 @@ export default function ExpensesPage() {
         <>
           {/* Add button */}
           <div className="mb-6">
-            <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-5 py-2.5 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 transition">
+            <button onClick={openCreateModal} className="flex items-center gap-2 px-5 py-2.5 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 transition">
               <Plus className="w-5 h-5" />
-              إضافة مصروف
+              إضافة مصروف جديد
             </button>
           </div>
 
@@ -125,8 +179,8 @@ export default function ExpensesPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <Card className="p-4 text-center"><p className="text-xs text-slate-500">المصاريف التشغيلية</p><p className="text-lg font-bold text-amber-600">{formatCurrency(totalOp, sym)}</p></Card>
             <Card className="p-4 text-center"><p className="text-xs text-slate-500">المصاريف التأسيسية</p><p className="text-lg font-bold text-red-600">{formatCurrency(totalCap, sym)}</p></Card>
-            <Card className="p-4 text-center"><p className="text-xs text-slate-500">الإجمالي</p><p className="text-lg font-bold text-slate-800">{formatCurrency(totalOp + totalCap, sym)}</p></Card>
-            <Card className="p-4 text-center"><p className="text-xs text-slate-500">أعلى فئة</p><p className="text-lg font-bold text-purple-600">{topCategory ? EXPENSE_CATEGORY_LABELS[topCategory[0] as ExpenseCategory] : '—'}</p></Card>
+            <Card className="p-4 text-center"><p className="text-xs text-slate-500">الإجمالي العام</p><p className="text-lg font-bold text-slate-800">{formatCurrency(totalOp + totalCap, sym)}</p></Card>
+            <Card className="p-4 text-center"><p className="text-xs text-slate-500">أعلى فئة مصاريف</p><p className="text-lg font-bold text-purple-600">{topCategory ? EXPENSE_CATEGORY_LABELS[topCategory[0] as ExpenseCategory] : '—'}</p></Card>
           </div>
 
           {/* Filters */}
@@ -149,29 +203,65 @@ export default function ExpensesPage() {
             </select>
           </div>
 
-          {/* Expenses Table */}
+          {/* Expenses Table with Edit & Delete Actions */}
           <Card className="overflow-x-auto">
             <table className="data-table">
-              <thead><tr><th>التاريخ</th><th>النطاق</th><th>النوع</th><th>الفئة</th><th>الوصف</th><th>الكمية</th><th>السعر</th><th>المجموع</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>التاريخ</th>
+                  <th>النطاق</th>
+                  <th>النوع</th>
+                  <th>الفئة</th>
+                  <th>الوصف</th>
+                  <th>الكمية</th>
+                  <th>السعر</th>
+                  <th>المجموع</th>
+                  <th className="text-center">إجراءات</th>
+                </tr>
+              </thead>
               <tbody>
-                {filtered.map(e => (
-                  <tr key={e.id}>
-                    <td className="font-medium">{formatDate(e.date)}</td>
-                    <td><Badge color={e.scope === 'foundation' ? 'red' : e.scope === 'batch' ? 'purple' : 'slate'}>{EXPENSE_SCOPE_LABELS[e.scope]}</Badge></td>
-                    <td><Badge color={e.type === 'capital' ? 'red' : 'amber'}>{EXPENSE_TYPE_LABELS[e.type]}</Badge></td>
-                    <td>{EXPENSE_CATEGORY_LABELS[e.category]}</td>
-                    <td>{e.description}</td>
-                    <td>{e.quantity}</td>
-                    <td>{formatCurrency(e.unitPrice, sym)}</td>
-                    <td className="font-bold text-red-600">{formatCurrency(e.total, sym)}</td>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="text-center py-6 text-slate-400">لا توجد مصاريف مسجلة</td>
                   </tr>
-                ))}
+                ) : (
+                  filtered.map(e => (
+                    <tr key={e.id}>
+                      <td className="font-medium">{formatDate(e.date)}</td>
+                      <td><Badge color={e.scope === 'foundation' ? 'red' : e.scope === 'batch' ? 'purple' : 'slate'}>{EXPENSE_SCOPE_LABELS[e.scope]}</Badge></td>
+                      <td><Badge color={e.type === 'capital' ? 'red' : 'amber'}>{EXPENSE_TYPE_LABELS[e.type]}</Badge></td>
+                      <td>{EXPENSE_CATEGORY_LABELS[e.category]}</td>
+                      <td>{e.description}</td>
+                      <td>{e.quantity}</td>
+                      <td>{formatCurrency(e.unitPrice, sym)}</td>
+                      <td className="font-bold text-red-600">{formatCurrency(e.total, sym)}</td>
+                      <td className="text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => openEditModal(e)}
+                            title="تعديل المصروف"
+                            className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteExpenseId(e.id!)}
+                            title="حذف المصروف"
+                            className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </Card>
 
-          {/* Add Expense Modal */}
-          <Modal isOpen={showForm} onClose={() => setShowForm(false)} title="إضافة مصروف" size="md">
+          {/* Add / Edit Expense Modal */}
+          <Modal isOpen={showForm} onClose={() => setShowForm(false)} title={editingExpenseId ? "تعديل المصروف" : "إضافة مصروف جديد"} size="md">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">التاريخ</label>
@@ -211,8 +301,26 @@ export default function ExpensesPage() {
                 <span className="text-lg font-bold text-red-700">المجموع: {formatCurrency(form.quantity * form.unitPrice, sym)}</span>
               </div>
             </div>
-            <button onClick={saveExpense} className="mt-5 w-full py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition">حفظ المصروف</button>
+            <div className="flex gap-3 pt-4">
+              <button onClick={() => setShowForm(false)} className="flex-1 py-3 border border-slate-300 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition">
+                إلغاء
+              </button>
+              <button onClick={saveExpense} className="flex-1 py-3 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition">
+                {editingExpenseId ? 'حفظ التعديلات' : 'حفظ المصروف'}
+              </button>
+            </div>
           </Modal>
+
+          {/* Delete Expense Confirm Dialog */}
+          <ConfirmDialog
+            isOpen={deleteExpenseId !== null}
+            onClose={() => setDeleteExpenseId(null)}
+            onConfirm={confirmDeleteExpense}
+            title="حذف المصروف"
+            message="هل أنت متأكد من رغبتك في حذف هذا المصروف؟ سيتم إعادة احتساب إجمالي المصاريف والتدفق النقدي وصافي الأرباح."
+            confirmLabel="حذف"
+            confirmColor="red"
+          />
         </>
       )}
 
