@@ -59,6 +59,7 @@ export default function ExpansionPage() {
   const [strategy, setStrategy] = useState<ExpansionStrategy>('incubator');
   const [fillIncubatorFull, setFillIncubatorFull] = useState<boolean>(false);
   const [monthlyPulletsAdd, setMonthlyPulletsAdd] = useState<number>(25);
+  const [learningEggsCount, setLearningEggsCount] = useState<number>(100);
 
   // Active plan rows & calculated summary
   const [summary, setSummary] = useState<ExpansionSummary | null>(null);
@@ -181,7 +182,14 @@ export default function ExpansionPage() {
     setTargetMonthlyProfit(tgt);
     setStrategy(strat);
     const hasFullBatch = (plan.months || []).some(m => (m.incubatorEggsUsed || 0) >= (base?.incubatorCapacity || 605));
-    setFillIncubatorFull(hasFullBatch || strat === 'pullets_100_full_inc');
+    setFillIncubatorFull(hasFullBatch || strat === 'pullets_100_full_inc' || strat === 'staged_3m_learn_full_inc');
+    if (strat === 'staged_3m_learn_full_inc') {
+      setMonthlyPulletsAdd(35);
+      const m2Inc = (plan.months || []).find(m => m.month === 2)?.incubatorEggsUsed;
+      if (m2Inc && m2Inc > 0 && m2Inc < 300) setLearningEggsCount(m2Inc);
+    } else if (strat === 'pullets_100_full_inc') {
+      setMonthlyPulletsAdd(25);
+    }
 
     if (plan.months && plan.months.length > 0 && base) {
       const rows: CalculatedMonthRow[] = plan.months.map(m => ({
@@ -196,7 +204,9 @@ export default function ExpansionPage() {
         feedCost: m.feedCost,
         rearingCost: m.rearingCost || 0,
         expectedEggProduction: m.expectedEggProduction,
-        eggsSold: Math.max(0, m.expectedEggProduction - Math.min(m.incubatorEggsUsed || 0, Math.floor(m.expectedEggProduction / 3))),
+        eggsSold: (m.milestoneNote || '').includes('شراء خارجي')
+          ? m.expectedEggProduction
+          : Math.max(0, m.expectedEggProduction - Math.min(m.incubatorEggsUsed || 0, Math.floor(m.expectedEggProduction / 3))),
         eggSalesRevenue: Math.max(0, m.expectedRevenue - (m.maleSalesRevenue || 0)),
         externalEggCost: 0,
         maleSalesRevenue: m.maleSalesRevenue || 0,
@@ -241,7 +251,8 @@ export default function ExpansionPage() {
     customTarget?: number,
     customDuration?: number,
     customFillFull?: boolean,
-    customPulletsPerMonth?: number
+    customPulletsPerMonth?: number,
+    customLearningEggs?: number
   ) {
     if (!baseline) return;
     const tgt = customTarget ?? targetMonthlyProfit;
@@ -249,6 +260,7 @@ export default function ExpansionPage() {
     const strat = customStrategy ?? strategy;
     const fillFull = customFillFull ?? fillIncubatorFull;
     const pulletsPerMo = customPulletsPerMonth ?? monthlyPulletsAdd;
+    const learnEggs = customLearningEggs ?? learningEggsCount;
 
     const computed = generateStrategicExpansionPlan(baseline, {
       targetMonthlyProfit: tgt,
@@ -257,10 +269,17 @@ export default function ExpansionPage() {
       fillIncubatorFull: fillFull,
       monthlyPulletsAdd: pulletsPerMo,
       pulletTargetHens: 100,
+      learningEggsCount: learnEggs,
     });
     setSummary(computed);
     setActivePlanId(null);
-    if (strat === 'pullets_100_full_inc') {
+    if (strat === 'staged_3m_learn_full_inc') {
+      setPlanName(
+        fillFull
+          ? `خطة 3 أشهر (${pulletsPerMo} عتوكة/شهر) + تعلم ${learnEggs} بيضة + ملء ${baseline.incubatorCapacity} شهر 3`
+          : `خطة 3 أشهر (${pulletsPerMo} عتوكة/شهر) + تعلم ${learnEggs} بيضة خارجية`
+      );
+    } else if (strat === 'pullets_100_full_inc') {
       setPlanName(
         fillFull
           ? `خطة 100 دجاجة (+${pulletsPerMo} عتوكة/شهر) + ملء الفقاسة ${baseline.incubatorCapacity} بيضة`
@@ -305,7 +324,8 @@ export default function ExpansionPage() {
 
       const expectedEggProduction = Math.round(activeHens * 30 * prodRate);
       const eggsToInc = r.incubatorEggsUsed || 0;
-      const internalDiverted = Math.min(eggsToInc, Math.floor(expectedEggProduction / 3));
+      const isForceExternal = (r.milestoneNote || '').includes('شراء خارجي');
+      const internalDiverted = isForceExternal ? 0 : Math.min(eggsToInc, Math.floor(expectedEggProduction / 3));
       const eggsSold = Math.max(0, expectedEggProduction - internalDiverted);
       const eggSalesRevenue = Math.round(eggsSold * eggPrice);
       const expectedRevenue = eggSalesRevenue + (r.maleSalesRevenue || 0);
@@ -614,13 +634,20 @@ export default function ExpansionPage() {
               value={strategy}
               onChange={e => {
                 const st = e.target.value as ExpansionStrategy;
-                const nextFill = st === 'pullets_100_full_inc' ? true : fillIncubatorFull;
+                const isCustomPullet = st === 'pullets_100_full_inc' || st === 'staged_3m_learn_full_inc';
+                const nextFill = isCustomPullet ? true : fillIncubatorFull;
+                const nextPullets =
+                  st === 'staged_3m_learn_full_inc' ? 35 : st === 'pullets_100_full_inc' ? 25 : monthlyPulletsAdd;
                 setStrategy(st);
-                if (st === 'pullets_100_full_inc') setFillIncubatorFull(true);
-                recalculateSmartPlan(st, targetMonthlyProfit, duration, nextFill, monthlyPulletsAdd);
+                if (isCustomPullet) {
+                  setFillIncubatorFull(true);
+                  setMonthlyPulletsAdd(nextPullets);
+                }
+                recalculateSmartPlan(st, targetMonthlyProfit, duration, nextFill, nextPullets, learningEggsCount);
               }}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium"
             >
+              <option value="staged_3m_learn_full_inc">3 أشهر (30-40 عتوكة/شهر) + تعلم 100 بيضة + ملء 605 شهر 3</option>
               <option value="pullets_100_full_inc">100 دجاجة (+25-30 عتوكة/شهر) + ملء الفقاسة 605</option>
               <option value="incubator">تفقيس ذاتي (من بيض المزرعة)</option>
               <option value="hybrid">هجين (فقاسة + شراء عتوكة)</option>
@@ -638,7 +665,7 @@ export default function ExpansionPage() {
               onChange={e => {
                 const checked = e.target.checked;
                 setFillIncubatorFull(checked);
-                recalculateSmartPlan(strategy, targetMonthlyProfit, duration, checked, monthlyPulletsAdd);
+                recalculateSmartPlan(strategy, targetMonthlyProfit, duration, checked, monthlyPulletsAdd, learningEggsCount);
               }}
               disabled={strategy === 'purchased'}
               className="w-4 h-4 accent-blue-600 rounded"
@@ -651,39 +678,64 @@ export default function ExpansionPage() {
             </span>
           </label>
 
-          {strategy === 'pullets_100_full_inc' && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-amber-800">🐔 العتوكة الشهرية (حتى 100 دجاجة):</span>
-              {[25, 28, 30].map(n => (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => {
-                    setMonthlyPulletsAdd(n);
-                    recalculateSmartPlan(strategy, targetMonthlyProfit, duration, fillIncubatorFull, n);
+          {(strategy === 'pullets_100_full_inc' || strategy === 'staged_3m_learn_full_inc') && (
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-amber-800">
+                  {strategy === 'staged_3m_learn_full_inc'
+                    ? '🐔 العتوكة/شهر (أشهر 1-3):'
+                    : '🐔 العتوكة الشهرية (حتى 100 دجاجة):'}
+                </span>
+                {(strategy === 'staged_3m_learn_full_inc' ? [30, 35, 40] : [25, 28, 30]).map(n => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => {
+                      setMonthlyPulletsAdd(n);
+                      recalculateSmartPlan(strategy, targetMonthlyProfit, duration, fillIncubatorFull, n, learningEggsCount);
+                    }}
+                    className={cn(
+                      'px-2.5 py-1 rounded-lg text-xs font-bold transition',
+                      monthlyPulletsAdd === n
+                        ? 'bg-amber-600 text-white'
+                        : 'bg-white border border-amber-300 text-amber-800 hover:bg-amber-50'
+                    )}
+                  >
+                    {n}/شهر
+                  </button>
+                ))}
+                <input
+                  type="number"
+                  min={10}
+                  max={60}
+                  value={monthlyPulletsAdd}
+                  onChange={e => {
+                    const v = Math.max(10, Math.min(60, +e.target.value || 30));
+                    setMonthlyPulletsAdd(v);
+                    recalculateSmartPlan(strategy, targetMonthlyProfit, duration, fillIncubatorFull, v, learningEggsCount);
                   }}
-                  className={cn(
-                    'px-2.5 py-1 rounded-lg text-xs font-bold transition',
-                    monthlyPulletsAdd === n
-                      ? 'bg-amber-600 text-white'
-                      : 'bg-white border border-amber-300 text-amber-800 hover:bg-amber-50'
-                  )}
-                >
-                  {n}/شهر
-                </button>
-              ))}
-              <input
-                type="number"
-                min={10}
-                max={50}
-                value={monthlyPulletsAdd}
-                onChange={e => {
-                  const v = Math.max(10, Math.min(50, +e.target.value || 25));
-                  setMonthlyPulletsAdd(v);
-                  recalculateSmartPlan(strategy, targetMonthlyProfit, duration, fillIncubatorFull, v);
-                }}
-                className="w-16 px-2 py-1 border border-amber-300 rounded-lg text-xs font-bold text-center bg-white"
-              />
+                  className="w-16 px-2 py-1 border border-amber-300 rounded-lg text-xs font-bold text-center bg-white"
+                />
+              </div>
+
+              {strategy === 'staged_3m_learn_full_inc' && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-blue-800">🥚 بيض التعلم (شهر 2 خارجي):</span>
+                  <input
+                    type="number"
+                    min={30}
+                    max={300}
+                    step={10}
+                    value={learningEggsCount}
+                    onChange={e => {
+                      const v = Math.max(30, Math.min(300, +e.target.value || 100));
+                      setLearningEggsCount(v);
+                      recalculateSmartPlan(strategy, targetMonthlyProfit, duration, fillIncubatorFull, monthlyPulletsAdd, v);
+                    }}
+                    className="w-20 px-2 py-1 border border-blue-300 rounded-lg text-xs font-bold text-center bg-white text-blue-800"
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>

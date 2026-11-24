@@ -128,17 +128,23 @@ export function generateStrategicExpansionPlan(
     durationMonths?: number;
     strategy?: ExpansionStrategy;
     fillIncubatorFull?: boolean;  // خيار ملء الفقاسة بالكامل (605 بيضة)
-    monthlyPulletsAdd?: number;   // عدد العتوكة المضافة شهرياً في خطة التدرج (25-30)
+    monthlyPulletsAdd?: number;   // عدد العتوكة المضافة شهرياً (25-30 أو 30-40)
     pulletTargetHens?: number;    // عتبة القطيع قبل أو مع الفقاسة (100 دجاجة)
+    learningEggsCount?: number;   // عدد البيض الخارجي للتعلم قبل ملء الفقاسة (مثلاً 100 بيضة)
   } = {}
 ): ExpansionSummary {
   const { settings } = baseline;
   const targetProfit = options.targetMonthlyProfit ?? 5000;
   const duration = options.durationMonths ?? 12;
   const strategy: ExpansionStrategy = options.strategy ?? 'incubator';
-  const fillIncubatorFull = options.fillIncubatorFull ?? (strategy === 'pullets_100_full_inc');
-  const monthlyPulletsAdd = Math.max(10, Math.min(60, options.monthlyPulletsAdd ?? 25));
+  const fillIncubatorFull =
+    options.fillIncubatorFull ?? (strategy === 'pullets_100_full_inc' || strategy === 'staged_3m_learn_full_inc');
+  const monthlyPulletsAdd = Math.max(
+    10,
+    Math.min(60, options.monthlyPulletsAdd ?? (strategy === 'staged_3m_learn_full_inc' ? 35 : 25))
+  );
   const pulletTargetHens = Math.max(20, options.pulletTargetHens ?? 100);
+  const learningEggsCount = Math.max(30, Math.min(300, options.learningEggsCount ?? 100));
   const today = baseline.today || new Date().toISOString().split('T')[0];
 
   const fertilityRate = (settings.targetRates.fertility || 85) / 100;
@@ -246,13 +252,36 @@ export function generateStrategicExpansionPlan(
   const additionalHensNeeded = Math.max(0, targetHensNeeded - startingProjectedHens);
 
   // ===== 3) جدولة الدفعات (شراء عتوكة + تفقيس) بناءً على الاستراتيجية =====
-  const incubatorPlacements: Record<number, { eggs: number }> = {};
+  const incubatorPlacements: Record<number, { eggs: number; forceExternal?: boolean; noteTag?: string }> = {};
   const purchasedArrivals: Record<number, number> = {};
 
   // نسبة الإناث السالمة لكل بيضة موضوعة = الإخصاب × الفقس × 50% إناث × البقاء
   const femalesPerEgg = overallHatchOfSet * 0.5 * survivalRate; // ~0.3128
 
-  if (strategy === 'pullets_100_full_inc') {
+  if (strategy === 'staged_3m_learn_full_inc') {
+    // خطة 3 أشهر: جلب 30-40 عتوكة شهرياً (أشهر 1، 2، 3) + تفقيس ~100 بيضة خارجية للتعلم مع بيع بيض المزرعة للسيولة + ملء الفقاسة 605 في الشهر 3
+    purchasedArrivals[1] = monthlyPulletsAdd;
+    if (duration >= 2) purchasedArrivals[2] = monthlyPulletsAdd;
+    if (duration >= 3) purchasedArrivals[3] = monthlyPulletsAdd;
+
+    // الشهر 1 مشغول بـ F2611-01؛ في الشهر 2 نضع ~100 بيضة خارجية للتعلم ونبيع 100% من بيض المزرعة لتوفير السيولة
+    if (duration >= 2) {
+      incubatorPlacements[2] = {
+        eggs: Math.min(incCapacity, learningEggsCount),
+        forceExternal: true,
+        noteTag: 'للتعلم (مصادر خارجية + بيع كامل بيض المزرعة للسيولة)',
+      };
+    }
+
+    // في الشهر 3: ملء الفقاسة بالكامل (605 بيضة) بالاعتماد على بيض المزرعة الوفير (120-150 دجاجة)
+    if (duration >= 3) {
+      incubatorPlacements[3] = {
+        eggs: fillIncubatorFull ? incCapacity : Math.min(incCapacity, learningEggsCount),
+        forceExternal: !fillIncubatorFull,
+        noteTag: fillIncubatorFull ? 'ملء الفقاسة بالكامل (الشهر 3)' : 'دفعة تعلم إضافية',
+      };
+    }
+  } else if (strategy === 'pullets_100_full_inc') {
     // 1) إضافة 25-30 عتوكة جاهزة كل شهر حتى الوصول إلى عتبة 100 دجاجة لتوفير سيولة وتخفيف العبء المالي
     let simHens = baseline.currentLayingHens;
     let milestoneMonth = 0;
@@ -495,16 +524,19 @@ export function generateStrategicExpansionPlan(
     const eggsForInc = incPlan ? incPlan.eggs : 0;
     totalIncubatorEggsUsed += eggsForInc;
 
-    // أقصى ما يُجمع من المزرعة في 10 أيام قبل التحضين = ثلث إنتاج الشهر
+    // أقصى ما يُجمع من المزرعة في 10 أيام قبل التحضين = ثلث إنتاج الشهر (إلا إذا كانت الدفعة خارجية 100% لتوفير السيولة)
     const maxInternal10Days = Math.floor(expectedEggProduction / 3);
-    const internalEggsDiverted = Math.min(eggsForInc, maxInternal10Days);
+    const internalEggsDiverted = incPlan?.forceExternal ? 0 : Math.min(eggsForInc, maxInternal10Days);
     const externalEggsToBuy = Math.max(0, eggsForInc - internalEggsDiverted);
     const externalEggCost = externalEggsToBuy * fertEggPrice;
 
     if (eggsForInc > 0) {
       const fullTag = eggsForInc >= incCapacity ? ' (ملء الفقاسة 100%)' : '';
+      const extraTag = incPlan?.noteTag ? ` — ${incPlan.noteTag}` : '';
       notesParts.push(
-        externalEggsToBuy > 0
+        externalEggsToBuy > 0 && internalEggsDiverted === 0
+          ? `تفقيس ${eggsForInc} بيضة شراء خارجي (${Math.round(externalEggCost)} د.م)${extraTag}`
+          : externalEggsToBuy > 0
           ? `تفقيس ${eggsForInc} بيضة${fullTag} (${internalEggsDiverted} من المزرعة + ${externalEggsToBuy} شراء)`
           : `تفقيس ${eggsForInc} بيضة${fullTag} من إنتاج المزرعة (0 د.م شراء)`
       );
