@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import AppShell from '@/components/AppShell';
-import { Card, Badge, EmptyState, LoadingSpinner } from '@/components/ui';
+import { Card, Badge, Modal, EmptyState, LoadingSpinner, ConfirmDialog } from '@/components/ui';
 import { db } from '@/lib/db';
-import type { RearingBatch, RearingWeeklyLog } from '@/lib/types';
+import type { RearingBatch, RearingStatus } from '@/lib/types';
 import { REARING_STATUS_LABELS } from '@/lib/types';
-import { formatDate, getRearingWeek, getFeedPhase, getFeedPhaseName, cn } from '@/lib/utils';
-import { TrendingUp, Bird } from 'lucide-react';
+import { formatDate, getRearingWeek, getFeedPhase, getFeedPhaseName, generateBatchCode, todayISO, cn } from '@/lib/utils';
+import { TrendingUp, Bird, Plus, Edit2, Trash2 } from 'lucide-react';
 
 const statusColors = { rearing: 'amber' as const, completed: 'green' as const, transferred: 'blue' as const };
 
@@ -17,19 +17,105 @@ export default function RearingListPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
 
+  // Modal states
+  const [showForm, setShowForm] = useState(false);
+  const [editingBatchId, setEditingBatchId] = useState<number | null>(null);
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
+
+  // Form state
+  const [form, setForm] = useState({
+    batchCode: generateBatchCode('T'),
+    startDate: todayISO(),
+    initialChickCount: 36,
+    initialCostPerChick: 40,
+    status: 'rearing' as RearingStatus,
+    notes: '',
+  });
+
   useEffect(() => {
-    (async () => {
-      try {
-        const b = await db.rearingBatches.toArray();
-        b.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
-        setBatches(b);
-      } catch (err) {
-        console.error('Error loading rearing batches:', err);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    loadData();
   }, []);
+
+  async function loadData() {
+    try {
+      const b = await db.rearingBatches.toArray();
+      b.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+      setBatches(b);
+    } catch (err) {
+      console.error('Error loading rearing batches:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openCreateModal() {
+    setEditingBatchId(null);
+    setForm({
+      batchCode: generateBatchCode('T'),
+      startDate: todayISO(),
+      initialChickCount: 30,
+      initialCostPerChick: 35,
+      status: 'rearing',
+      notes: '',
+    });
+    setShowForm(true);
+  }
+
+  function openEditModal(batch: RearingBatch, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setEditingBatchId(batch.id || null);
+    setForm({
+      batchCode: batch.batchCode,
+      startDate: batch.startDate,
+      initialChickCount: batch.initialChickCount,
+      initialCostPerChick: batch.initialCostPerChick,
+      status: batch.status,
+      notes: batch.notes || '',
+    });
+    setShowForm(true);
+  }
+
+  async function saveBatch() {
+    if (editingBatchId) {
+      await db.rearingBatches.update(editingBatchId, {
+        batchCode: form.batchCode,
+        startDate: form.startDate,
+        initialChickCount: Number(form.initialChickCount),
+        initialCostPerChick: Number(form.initialCostPerChick),
+        status: form.status,
+        notes: form.notes,
+      });
+    } else {
+      await db.rearingBatches.add({
+        batchCode: form.batchCode,
+        startDate: form.startDate,
+        initialChickCount: Number(form.initialChickCount),
+        initialCostPerChick: Number(form.initialCostPerChick),
+        status: form.status,
+        notes: form.notes,
+        createdAt: todayISO(),
+      });
+    }
+    setShowForm(false);
+    loadData();
+  }
+
+  function promptDelete(batchId: number, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeleteTargetId(batchId);
+  }
+
+  async function confirmDelete() {
+    if (deleteTargetId) {
+      // حذف الدفعة وسجلاتها الأسبوعية المرتبطة بها
+      await db.rearingBatches.delete(deleteTargetId);
+      await db.rearingWeeklyLogs.where('rearingBatchId').equals(deleteTargetId).delete();
+      setDeleteTargetId(null);
+      loadData();
+    }
+  }
 
   const filtered = filter === 'all' ? batches : batches.filter(b => b.status === filter);
 
@@ -39,9 +125,16 @@ export default function RearingListPage() {
     <AppShell>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">تتبع النمو والتربية</h1>
+          <h1 className="text-xl font-bold text-slate-800">تتبع النمو والتربية (عتوكة / كتاكيت)</h1>
           <p className="text-sm text-slate-500">{batches.length} دفعة مسجلة</p>
         </div>
+        <button
+          onClick={openCreateModal}
+          className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition"
+        >
+          <Plus className="w-5 h-5" />
+          دفعة تربية جديدة
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-2 mb-6">
@@ -53,38 +146,127 @@ export default function RearingListPage() {
       </div>
 
       {filtered.length === 0 ? (
-        <EmptyState icon={<Bird className="w-16 h-16" />} title="لا توجد دفعات تربية" description="يتم إنشاء دفعات التربية تلقائياً عند نقل الكتاكيت من الفقاسة" />
+        <EmptyState
+          icon={<Bird className="w-16 h-16" />}
+          title="لا توجد دفعات تربية"
+          description="يمكنك إنشاء دفعة جديدة أو تحويلها تلقائياً من الفقاسة"
+          action={{ label: 'إنشاء دفعة تربية', onClick: openCreateModal }}
+        />
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(batch => {
             const week = getRearingWeek(batch.startDate);
             const phase = getFeedPhase(week);
             return (
-              <Link key={batch.id} href={`/rearing/${batch.id}`}>
-                <Card className="p-5 hover:shadow-md transition-shadow h-full">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-lg font-bold text-slate-800">{batch.batchCode}</span>
-                    <Badge color={statusColors[batch.status]}>{REARING_STATUS_LABELS[batch.status]}</Badge>
-                  </div>
-                  <div className="mb-3">
-                    <div className="flex justify-between items-center mb-1">
-                      <span className="text-xs text-slate-500">الأسبوع {Math.min(week, 20)} / 20</span>
-                      <Badge color={phase === 'starter' ? 'amber' : phase === 'grower' ? 'blue' : 'purple'}>{getFeedPhaseName(phase)}</Badge>
+              <div key={batch.id} className="relative group">
+                <Link href={`/rearing/${batch.id}`}>
+                  <Card className="p-5 hover:shadow-md transition-shadow h-full flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-lg font-bold text-slate-800">{batch.batchCode}</span>
+                        <Badge color={statusColors[batch.status]}>{REARING_STATUS_LABELS[batch.status]}</Badge>
+                      </div>
+                      <div className="mb-3">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-xs text-slate-500">الأسبوع {Math.min(week, 20)} / 20</span>
+                          <Badge color={phase === 'starter' ? 'amber' : phase === 'grower' ? 'blue' : 'purple'}>{getFeedPhaseName(phase)}</Badge>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2">
+                          <div className="bg-blue-500 h-2 rounded-full transition-all" style={{ width: `${(Math.min(week, 20) / 20) * 100}%` }} />
+                        </div>
+                      </div>
+                      <div className="space-y-1.5 text-sm text-slate-600">
+                        <div className="flex justify-between"><span>📅 تاريخ البدء</span><span className="font-medium">{formatDate(batch.startDate)}</span></div>
+                        <div className="flex justify-between"><span>🐥 العدد الابتدائي</span><span className="font-medium">{batch.initialChickCount} طير</span></div>
+                        <div className="flex justify-between"><span>💰 تكلفة الطير الأولية</span><span className="font-medium">{batch.initialCostPerChick} د.م</span></div>
+                        {batch.notes && <p className="text-xs text-slate-400 mt-2 line-clamp-1">{batch.notes}</p>}
+                      </div>
                     </div>
-                    <div className="w-full bg-slate-100 rounded-full h-2">
-                      <div className="bg-blue-500 h-2 rounded-full transition-all" style={{ width: `${(Math.min(week, 20) / 20) * 100}%` }} />
+
+                    {/* Footer Actions */}
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                      <span className="text-xs text-blue-600 font-medium">عرض سجل الأسابيع ←</span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => openEditModal(batch, e)}
+                          title="تعديل الدفعة"
+                          className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={(e) => promptDelete(batch.id!, e)}
+                          title="حذف الدفعة"
+                          className="p-1.5 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  <div className="space-y-1 text-sm text-slate-600">
-                    <div className="flex justify-between"><span>📅 تاريخ البدء</span><span className="font-medium">{formatDate(batch.startDate)}</span></div>
-                    <div className="flex justify-between"><span>🐥 العدد الابتدائي</span><span className="font-medium">{batch.initialChickCount}</span></div>
-                  </div>
-                </Card>
-              </Link>
+                  </Card>
+                </Link>
+              </div>
             );
           })}
         </div>
       )}
+
+      {/* Add / Edit Batch Modal */}
+      <Modal isOpen={showForm} onClose={() => setShowForm(false)} title={editingBatchId ? "تعديل دفعة التربية" : "إنشاء دفعة تربية جديدة"} size="md">
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">رمز الدفعة</label>
+              <input type="text" value={form.batchCode} onChange={e => setForm(p => ({ ...p, batchCode: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">تاريخ البدء</label>
+              <input type="date" value={form.startDate} onChange={e => setForm(p => ({ ...p, startDate: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">العدد الابتدائي (طيور / كتاكيت)</label>
+              <input type="number" value={form.initialChickCount} onChange={e => setForm(p => ({ ...p, initialChickCount: +e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">تكلفة الطير الأولية (د.م)</label>
+              <input type="number" step="0.5" value={form.initialCostPerChick} onChange={e => setForm(p => ({ ...p, initialCostPerChick: +e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">حالة الدفعة</label>
+            <select value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value as RearingStatus }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+              <option value="rearing">قيد التربية</option>
+              <option value="completed">مكتمل (أتمت الشهر 5)</option>
+              <option value="transferred">تم النقل للقطيع البياض</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">ملاحظات</label>
+            <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" rows={2} />
+          </div>
+          <div className="flex gap-3 pt-3">
+            <button onClick={() => setShowForm(false)} className="flex-1 py-3 border border-slate-300 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition">
+              إلغاء
+            </button>
+            <button onClick={saveBatch} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition">
+              {editingBatchId ? "حفظ التعديلات" : "إنشاء الدفعة"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        isOpen={deleteTargetId !== null}
+        onClose={() => setDeleteTargetId(null)}
+        onConfirm={confirmDelete}
+        title="حذف دفعة التربية"
+        message="هل أنت متأكد من حذف هذه الدفعة وسجلاتها الأسبوعية المرتبطة بها؟"
+        confirmLabel="حذف نهائي"
+        confirmColor="red"
+      />
     </AppShell>
   );
 }
