@@ -30,6 +30,7 @@ export default function RearingListPage() {
     initialCostPerChick: 40,
     currentHealthyCount: 18,
     mortalityCount: 14,
+    currentAgeWeeks: 5,
     status: 'rearing' as RearingStatus,
     notes: '',
   });
@@ -59,6 +60,7 @@ export default function RearingListPage() {
       initialCostPerChick: 35,
       currentHealthyCount: 30,
       mortalityCount: 0,
+      currentAgeWeeks: 1,
       status: 'rearing',
       notes: '',
     });
@@ -72,6 +74,7 @@ export default function RearingListPage() {
     const initial = batch.initialChickCount || 0;
     const mortality = batch.mortalityCount ?? 0;
     const healthy = batch.currentHealthyCount ?? (initial - mortality);
+    const age = batch.currentAgeWeeks || getRearingWeek(batch.startDate);
     setForm({
       batchCode: batch.batchCode,
       startDate: batch.startDate,
@@ -79,6 +82,7 @@ export default function RearingListPage() {
       initialCostPerChick: batch.initialCostPerChick,
       currentHealthyCount: healthy,
       mortalityCount: mortality,
+      currentAgeWeeks: age,
       status: batch.status,
       notes: batch.notes || '',
     });
@@ -119,6 +123,7 @@ export default function RearingListPage() {
       initialCostPerChick: Number(form.initialCostPerChick),
       currentHealthyCount: Number(form.currentHealthyCount),
       mortalityCount: Number(form.mortalityCount),
+      currentAgeWeeks: Number(form.currentAgeWeeks),
       status: form.status,
       notes: form.notes,
     };
@@ -189,7 +194,7 @@ export default function RearingListPage() {
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(batch => {
-            const week = getRearingWeek(batch.startDate);
+            const week = batch.currentAgeWeeks || getRearingWeek(batch.startDate);
             const phase = getFeedPhase(week);
             return (
               <div key={batch.id} className="relative group">
@@ -211,6 +216,12 @@ export default function RearingListPage() {
                       </div>
                       <div className="space-y-1.5 text-sm text-slate-600">
                         <div className="flex justify-between"><span>📅 تاريخ البدء</span><span className="font-medium">{formatDate(batch.startDate)}</span></div>
+                        <div className="flex justify-between">
+                          <span>⏳ العمر الحالي</span>
+                          <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
+                            {week} أسبوع
+                          </span>
+                        </div>
                         <div className="flex justify-between"><span>🐥 العدد الابتدائي</span><span className="font-medium">{batch.initialChickCount} طير</span></div>
                         <div className="flex justify-between text-red-600">
                           <span>💀 عدد النفوق</span>
@@ -272,9 +283,13 @@ export default function RearingListPage() {
               <input type="number" value={form.initialChickCount} onChange={e => handleInitialCountChange(+e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">تكلفة الطير الأولية (د.م)</label>
-              <input type="number" step="0.5" value={form.initialCostPerChick} onChange={e => setForm(p => ({ ...p, initialCostPerChick: +e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              <label className="block text-sm font-medium text-slate-700 mb-1">العمر بالأسابيع (أسبوع)</label>
+              <input type="number" min="1" max="50" value={form.currentAgeWeeks} onChange={e => setForm(p => ({ ...p, currentAgeWeeks: +e.target.value }))} className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-blue-50/40 font-bold text-blue-700" placeholder="مثال: 5 أسابيع" />
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">تكلفة الطير الأولية (د.م)</label>
+            <input type="number" step="0.5" value={form.initialCostPerChick} onChange={e => setForm(p => ({ ...p, initialCostPerChick: +e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
           </div>
           <div className="grid grid-cols-2 gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
             <div>

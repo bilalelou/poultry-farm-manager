@@ -151,11 +151,14 @@ export function todayISO(): string {
 }
 
 /**
- * حساب أسبوع التربية الحالي
+ * حساب أسبوع التربية الحالي أو العمر بالأسابيع
  */
-export function getRearingWeek(startDate: string): number {
+export function getRearingWeek(startDate: string, explicitAgeWeeks?: number): number {
+  if (typeof explicitAgeWeeks === 'number' && explicitAgeWeeks > 0) {
+    return explicitAgeWeeks;
+  }
   const days = daysBetween(startDate, todayISO());
-  return Math.min(Math.ceil(days / 7), 20);
+  return Math.max(1, Math.ceil(days / 7));
 }
 
 /**

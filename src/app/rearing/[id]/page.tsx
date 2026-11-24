@@ -131,7 +131,7 @@ export default function RearingDetailPage({ params }: { params: Promise<{ id: st
             <p className="text-xs text-emerald-700 font-medium">العدد السليم (المتبقي)</p>
             <p className="text-2xl font-black text-emerald-700">{finalRemaining} طير</p>
           </div>
-          <div><p className="text-xs text-slate-500">الأسبوع الحالي</p><p className="text-xl font-bold">{Math.min(getRearingWeek(batch.startDate), 20)} / 20</p></div>
+          <div><p className="text-xs text-slate-500">العمر الحالي</p><p className="text-xl font-bold text-blue-700">{Math.min(batch.currentAgeWeeks || getRearingWeek(batch.startDate), 20)} / 20 أسبوع</p></div>
           <div><p className="text-xs text-slate-500">الذكور المباعة</p><p className="text-xl font-bold text-blue-600">{totalMalesSold}</p></div>
         </div>
       </Card>
