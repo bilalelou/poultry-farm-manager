@@ -322,7 +322,11 @@ export async function POST(request: Request) {
         return NextResponse.json(item);
       }
       case 'dailyProduction': {
-        const item = await prisma.dailyProduction.create({ data: body });
+        const item = await prisma.dailyProduction.upsert({
+          where: { date: body.date },
+          update: body,
+          create: body,
+        });
         return NextResponse.json(item);
       }
       case 'sales': {
@@ -373,47 +377,48 @@ export async function PUT(request: Request) {
   const resource = searchParams.get('resource');
   const id = Number(searchParams.get('id'));
   const body = await request.json();
+  const { id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...cleanData } = body;
 
   try {
     switch (resource) {
       case 'settings': {
-        const updated = await prisma.settings.update({ where: { id }, data: body });
+        const updated = await prisma.settings.update({ where: { id }, data: cleanData });
         return NextResponse.json(updated);
       }
       case 'incubatorBatches': {
-        const updated = await prisma.incubatorBatch.update({ where: { id }, data: body });
+        const updated = await prisma.incubatorBatch.update({ where: { id }, data: cleanData });
         return NextResponse.json(updated);
       }
       case 'rearingBatches': {
-        const updated = await prisma.rearingBatch.update({ where: { id }, data: body });
+        const updated = await prisma.rearingBatch.update({ where: { id }, data: cleanData });
         return NextResponse.json(updated);
       }
       case 'dailyProduction': {
-        const updated = await prisma.dailyProduction.update({ where: { id }, data: body });
+        const updated = await prisma.dailyProduction.update({ where: { id }, data: cleanData });
         return NextResponse.json(updated);
       }
       case 'sales': {
-        const updated = await prisma.sale.update({ where: { id }, data: body });
+        const updated = await prisma.sale.update({ where: { id }, data: cleanData });
         return NextResponse.json(updated);
       }
       case 'expenses': {
-        const updated = await prisma.expense.update({ where: { id }, data: body });
+        const updated = await prisma.expense.update({ where: { id }, data: cleanData });
         return NextResponse.json(updated);
       }
       case 'flockGroups': {
-        const updated = await prisma.flockGroup.update({ where: { id }, data: body });
+        const updated = await prisma.flockGroup.update({ where: { id }, data: cleanData });
         return NextResponse.json(updated);
       }
       case 'investors': {
-        const updated = await prisma.investor.update({ where: { id }, data: body });
+        const updated = await prisma.investor.update({ where: { id }, data: cleanData });
         return NextResponse.json(updated);
       }
       case 'valuationItems': {
-        const updated = await prisma.valuationItem.update({ where: { id }, data: body });
+        const updated = await prisma.valuationItem.update({ where: { id }, data: cleanData });
         return NextResponse.json(updated);
       }
       case 'expansionPlans': {
-        const { months, ...planData } = body;
+        const { months, ...planData } = cleanData;
         if (Array.isArray(months)) {
           await prisma.expansionPlanMonth.deleteMany({ where: { planId: id } });
         }

@@ -41,8 +41,10 @@ export default function DashboardPage() {
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [eggForm, setEggForm] = useState({ date: todayISO(), activeHenCount: 0, dailyMortality: 0, totalEggsCollected: 0, brokenEggs: 0, incubatorEggs: 0, personalUse: 0 });
   const [expenseForm, setExpenseForm] = useState({ date: todayISO(), category: 'feed' as const, description: '', quantity: 1, unitPrice: 0 });
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     loadData();
   }, []);
 
@@ -205,35 +207,43 @@ export default function DashboardPage() {
         {/* Monthly Revenue vs Expenses */}
         <Card className="p-5">
           <h3 className="text-base font-bold text-slate-800 mb-4">المداخيل والمصاريف الشهرية</h3>
-          <div style={{ width: '100%', height: 300 }}>
-            <ResponsiveContainer>
-              <BarChart data={monthlyData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                <YAxis tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(v: any) => formatCurrency(Number(v) || 0, sym)} />
-                <Legend />
-                <Bar dataKey="revenue" name="المداخيل" fill="#2563eb" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="expenses" name="المصاريف" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="profit" name="الربح" fill="#10b981" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div style={{ width: '100%', height: 300 }} className="flex items-center justify-center">
+            {mounted ? (
+              <ResponsiveContainer>
+                <BarChart data={monthlyData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip formatter={(v: any) => formatCurrency(Number(v) || 0, sym)} />
+                  <Legend />
+                  <Bar dataKey="revenue" name="المداخيل" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="expenses" name="المصاريف" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="profit" name="الربح" fill="#10b981" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <span className="text-sm text-slate-400">جاري تحميل الرسم البياني...</span>
+            )}
           </div>
         </Card>
 
         {/* Production Trend */}
         <Card className="p-5">
           <h3 className="text-base font-bold text-slate-800 mb-4">تطور نسبة إنتاج البيض اليومي</h3>
-          <div style={{ width: '100%', height: 300 }}>
-            <ResponsiveContainer>
-              <LineChart data={productionTrend}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(v: any) => `${v}%`} />
-                <Line type="monotone" dataKey="rate" name="نسبة الإنتاج" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
+          <div style={{ width: '100%', height: 300 }} className="flex items-center justify-center">
+            {mounted ? (
+              <ResponsiveContainer>
+                <LineChart data={productionTrend}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
+                  <Tooltip formatter={(v: any) => `${v}%`} />
+                  <Line type="monotone" dataKey="rate" name="نسبة الإنتاج" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <span className="text-sm text-slate-400">جاري تحميل الرسم البياني...</span>
+            )}
           </div>
         </Card>
 
@@ -241,17 +251,21 @@ export default function DashboardPage() {
         <Card className="p-5 lg:col-span-2">
           <h3 className="text-base font-bold text-slate-800 mb-4">توزيع المصاريف حسب الفئة</h3>
           <div className="flex flex-col md:flex-row items-center gap-6">
-            <div style={{ width: 280, height: 280 }}>
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie data={expenseCategories} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={110} paddingAngle={2}>
-                    {expenseCategories.map((_, i) => (
-                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(v: any) => formatCurrency(Number(v) || 0, sym)} />
-                </PieChart>
-              </ResponsiveContainer>
+            <div style={{ width: 280, height: 280 }} className="flex items-center justify-center">
+              {mounted ? (
+                <ResponsiveContainer>
+                  <PieChart>
+                    <Pie data={expenseCategories} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={110} paddingAngle={2}>
+                      {expenseCategories.map((_, i) => (
+                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: any) => formatCurrency(Number(v) || 0, sym)} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <span className="text-sm text-slate-400">جاري التحميل...</span>
+              )}
             </div>
             <div className="flex flex-wrap gap-3">
               {expenseCategories.map((cat, i) => (

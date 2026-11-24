@@ -58,8 +58,10 @@ export default function ExpansionPage() {
 
   // Active plan rows & calculated summary
   const [summary, setSummary] = useState<ExpansionSummary | null>(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     loadAllData();
   }, []);
 
@@ -654,37 +656,45 @@ export default function ExpansionPage() {
           <div className="grid lg:grid-cols-2 gap-6 mb-6">
             <Card className="p-5">
               <h3 className="text-base font-bold text-slate-800 mb-3">نمو القطيع البياض وصافي الربح الشهري مقابل الهدف</h3>
-              <div style={{ width: '100%', height: 270 }}>
-                <ResponsiveContainer>
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
-                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
-                    <Tooltip formatter={(v: any, name: any) => name === 'القطيع البياض' ? `${v} دجاجة` : formatCurrency(Number(v) || 0, sym)} />
-                    <Legend />
-                    <ReferenceLine yAxisId="left" y={targetMonthlyProfit} stroke="#10b981" strokeDasharray="4 4" label="الهدف 5000" />
-                    <Line yAxisId="left" type="monotone" dataKey="monthlyProfit" name="صافي الربح الشهري" stroke="#10b981" strokeWidth={3} />
-                    <Line yAxisId="right" type="monotone" dataKey="hens" name="القطيع البياض" stroke="#2563eb" strokeWidth={2.5} />
-                  </LineChart>
-                </ResponsiveContainer>
+              <div style={{ width: '100%', height: 270 }} className="flex items-center justify-center">
+                {mounted ? (
+                  <ResponsiveContainer>
+                    <LineChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                      <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+                      <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+                      <Tooltip formatter={(v: any, name: any) => name === 'القطيع البياض' ? `${v} دجاجة` : formatCurrency(Number(v) || 0, sym)} />
+                      <Legend />
+                      <ReferenceLine yAxisId="left" y={targetMonthlyProfit} stroke="#10b981" strokeDasharray="4 4" label="الهدف 5000" />
+                      <Line yAxisId="left" type="monotone" dataKey="monthlyProfit" name="صافي الربح الشهري" stroke="#10b981" strokeWidth={3} />
+                      <Line yAxisId="right" type="monotone" dataKey="hens" name="القطيع البياض" stroke="#2563eb" strokeWidth={2.5} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <span className="text-sm text-slate-400">جاري تحميل الرسم البياني...</span>
+                )}
               </div>
             </Card>
 
             <Card className="p-5">
               <h3 className="text-base font-bold text-slate-800 mb-3">المداخيل مقابل التكاليف التشغيلية والتربية</h3>
-              <div style={{ width: '100%', height: 270 }}>
-                <ResponsiveContainer>
-                  <BarChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <Tooltip formatter={(v: any) => formatCurrency(Number(v) || 0, sym)} />
-                    <Legend />
-                    <Bar dataKey="revenue" name="المداخيل (بيض + ديوك)" fill="#10b981" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="costs" name="التكاليف (علف بياض + تربية)" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div style={{ width: '100%', height: 270 }} className="flex items-center justify-center">
+                {mounted ? (
+                  <ResponsiveContainer>
+                    <BarChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip formatter={(v: any) => formatCurrency(Number(v) || 0, sym)} />
+                      <Legend />
+                      <Bar dataKey="revenue" name="المداخيل (بيض + ديوك)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="costs" name="التكاليف (علف بياض + تربية)" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <span className="text-sm text-slate-400">جاري تحميل الرسم البياني...</span>
+                )}
               </div>
             </Card>
           </div>

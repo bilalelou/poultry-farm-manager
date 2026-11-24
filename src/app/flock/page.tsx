@@ -90,28 +90,22 @@ export default function FlockPage() {
     setShowModal(true);
   }
 
-  function handleMalesChange(males: number) {
-    const m = Math.max(0, isNaN(males) ? 0 : males);
-    setForm(prev => {
-      // إذا كانت المجموعة ديوك، فالإجمالي يساوي عدد الديوك والإناث 0
-      if (prev.category === 'roosters') {
-        return { ...prev, malesCount: m, headCount: m, femalesCount: 0 };
-      }
-      const total = Math.max(m + prev.femalesCount, prev.headCount);
-      const f = Math.max(0, total - m);
-      return { ...prev, malesCount: m, headCount: total, femalesCount: f };
-    });
+  function handleMalesChange(val: number) {
+    const m = Math.max(0, isNaN(val) ? 0 : val);
+    setForm(prev => ({
+      ...prev,
+      malesCount: m,
+      headCount: m + prev.femalesCount,
+    }));
   }
 
-  function handleFemalesChange(females: number) {
-    const f = Math.max(0, isNaN(females) ? 0 : females);
-    setForm(prev => {
-      if (prev.category === 'layers') {
-        return { ...prev, femalesCount: f, headCount: f + prev.malesCount };
-      }
-      const total = Math.max(prev.malesCount + f, prev.headCount);
-      return { ...prev, femalesCount: f, headCount: total };
-    });
+  function handleFemalesChange(val: number) {
+    const f = Math.max(0, isNaN(val) ? 0 : val);
+    setForm(prev => ({
+      ...prev,
+      femalesCount: f,
+      headCount: prev.malesCount + f,
+    }));
   }
 
   function handleHeadCountChange(total: number) {

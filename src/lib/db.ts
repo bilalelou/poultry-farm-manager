@@ -41,12 +41,12 @@ function createTableHandler<T extends { id?: number }>(resource: string, localTa
         return await localTable.toArray();
       }
     },
-    get: async (id: number): Promise<T | undefined> => {
+    get: async (id: number | string): Promise<T | undefined> => {
       try {
         const all = await fetchApi<T[]>(resource);
-        return all.find((item: any) => item.id === id);
+        return all.find((item: any) => item.id === Number(id) || (typeof id === 'string' && (item.batchCode === id || item.name === id)));
       } catch (e) {
-        return await localTable.get(id);
+        return await localTable.get(id as any);
       }
     },
     add: async (data: any): Promise<any> => {

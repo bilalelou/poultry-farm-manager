@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, use } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppShell from '@/components/AppShell';
 import { Card, Badge, Modal, LoadingSpinner, ConfirmDialog } from '@/components/ui';
@@ -47,7 +48,7 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
   async function loadData() {
     const s = await getSettings();
     setSettings(s);
-    const b = await db.incubatorBatches.get(Number(id));
+    const b = await db.incubatorBatches.get(id);
     if (b) {
       setBatch(b);
       setCandlingForm({ fertilizedCount: b.fertilizedCount || 0 });
@@ -156,7 +157,21 @@ export default function IncubatorDetailPage({ params }: { params: Promise<{ id: 
     router.push('/rearing');
   }
 
-  if (loading || !batch) return <AppShell><LoadingSpinner /></AppShell>;
+  if (loading) return <AppShell><LoadingSpinner /></AppShell>;
+
+  if (!batch) {
+    return (
+      <AppShell>
+        <div className="text-center py-16 bg-white rounded-2xl border border-slate-200 p-8 max-w-md mx-auto my-12">
+          <p className="text-lg font-bold text-slate-700 mb-2">دفعة الفقاسة غير موجودة</p>
+          <p className="text-sm text-slate-500 mb-6">لم يتم العثور على دفعة الفقاسة المطلوبة: {id}</p>
+          <Link href="/incubator" className="inline-block px-5 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition">
+            العودة لقائمة دفعات الفقاسة
+          </Link>
+        </div>
+      </AppShell>
+    );
+  }
 
   const sym = settings?.currencySymbol || 'د.م';
   const day = getIncubatorDay(batch.startDate);
