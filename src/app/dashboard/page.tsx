@@ -29,6 +29,8 @@ export default function DashboardPage() {
   const [avgProductionRate, setAvgProductionRate] = useState(0);
   const [totalEggsProduced, setTotalEggsProduced] = useState(0);
   const [currentEggsStock, setCurrentEggsStock] = useState(0);
+  const [mortalityRate, setMortalityRate] = useState(0);
+  const [mortalityDetails, setMortalityDetails] = useState('');
   const [latestBatch, setLatestBatch] = useState<IncubatorBatch | null>(null);
 
   // Chart data
@@ -53,10 +55,44 @@ export default function DashboardPage() {
       const s = await getSettings();
       setSettings(s);
 
-      const sales = await db.sales.toArray();
-      const expenses = await db.expenses.toArray();
-      const productions = await db.dailyProduction.orderBy('date').toArray();
-      const batches = await db.incubatorBatches.orderBy('startDate').toArray();
+      const [sales, expenses, productions, batches, rearingBatches, flockGroups] = await Promise.all([
+        db.sales.toArray(),
+        db.expenses.toArray(),
+        db.dailyProduction.orderBy('date').toArray(),
+        db.incubatorBatches.orderBy('startDate').toArray(),
+        db.rearingBatches.toArray(),
+        db.flockGroups.toArray(),
+      ]);
+
+      // حساب نسبة النفوق الفعلية من دفعات التربية وسجلات الإنتاج اليومي
+      let totalRearingDeaths = 0;
+      let totalRearingInitial = 0;
+      let transferredSurvivors = 0;
+      for (const r of rearingBatches) {
+        const initial = r.initialChickCount || 0;
+        const deaths =
+          r.mortalityCount !== undefined && r.mortalityCount !== null
+            ? r.mortalityCount
+            : r.currentHealthyCount !== undefined && r.currentHealthyCount !== null
+            ? Math.max(0, initial - r.currentHealthyCount)
+            : 0;
+        totalRearingInitial += initial;
+        totalRearingDeaths += deaths;
+        if (r.status === 'transferred') {
+          transferredSurvivors += Math.max(0, (r.currentHealthyCount ?? initial - deaths) - (r.malesCount || 0));
+        }
+      }
+      const totalDailyDeaths = productions.reduce((sum, p) => sum + (p.dailyMortality || 0), 0);
+      const latestProdHens = productions.length > 0
+        ? productions[productions.length - 1].activeHenCount
+        : flockGroups.filter(f => f.category === 'layers').reduce((s, f) => s + (f.femalesCount || 0), 0);
+      const adultRoosters = flockGroups.filter(f => f.category === 'roosters').reduce((s, f) => s + (f.malesCount || 0), 0);
+      const externalAdults = Math.max(0, latestProdHens - transferredSurvivors) + adultRoosters;
+      const totalTrackedBirds = totalRearingInitial + externalAdults + totalDailyDeaths;
+      const totalDeaths = totalRearingDeaths + totalDailyDeaths;
+      const realMortalityRate = totalTrackedBirds > 0 ? Math.round((totalDeaths / totalTrackedBirds) * 1000) / 10 : 0;
+      setMortalityRate(realMortalityRate);
+      setMortalityDetails(totalTrackedBirds > 0 ? `${totalDeaths} من ${totalTrackedBirds} طير` : '');
 
       const rev = sales.reduce((sum, s) => sum + s.total, 0);
       setTotalRevenue(rev);
@@ -198,7 +234,12 @@ export default function DashboardPage() {
           <ProgressBar label="نسبة إنتاج البيض" value={avgProductionRate} target={settings?.targetRates.production || 75} />
           <ProgressBar label="نسبة الإخصاب" value={latestBatch?.fertilityRate || 0} target={settings?.targetRates.fertility || 85} />
           <ProgressBar label="نسبة التفقيس" value={latestBatch?.hatchRate || 0} target={settings?.targetRates.hatch || 80} />
-          <ProgressBar label="نسبة النفوق (أقل أفضل)" value={3.2} target={settings?.targetRates.maxMortality || 5} />
+          <ProgressBar
+            label={`نسبة النفوق الفعلية${mortalityDetails ? ` (${mortalityDetails})` : ''} (أقل أفضل)`}
+            value={mortalityRate}
+            target={settings?.targetRates.maxMortality || 5}
+            isLowerBetter
+          />
         </div>
       </Card>
 

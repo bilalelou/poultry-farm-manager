@@ -98,11 +98,24 @@ interface ProgressBarProps {
   target: number;
   unit?: string;
   color?: 'green' | 'yellow' | 'red';
+  isLowerBetter?: boolean;
 }
 
-export function ProgressBar({ label, value, target, unit = '%', color }: ProgressBarProps) {
-  const percent = Math.min((value / target) * 100, 100);
-  const autoColor = color || (percent >= 95 ? 'green' : percent >= 80 ? 'yellow' : 'red');
+export function ProgressBar({ label, value, target, unit = '%', color, isLowerBetter = false }: ProgressBarProps) {
+  const percent = target > 0 ? Math.min((value / target) * 100, 100) : 0;
+  const autoColor =
+    color ||
+    (isLowerBetter
+      ? value <= target
+        ? 'green'
+        : value <= target * 1.5
+        ? 'yellow'
+        : 'red'
+      : percent >= 95
+      ? 'green'
+      : percent >= 80
+      ? 'yellow'
+      : 'red');
   const barColors = {
     green: 'bg-emerald-500',
     yellow: 'bg-amber-500',
