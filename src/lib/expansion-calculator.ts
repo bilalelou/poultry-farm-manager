@@ -2,7 +2,7 @@
 // محرك حساب خطة التوسع الاستراتيجية بناءً على المعطيات الفعلية للمزرعة
 // ============================================================
 
-import type { Settings, ExpansionPlanMonth, ExpansionSource } from './types';
+import type { Settings, ExpansionPlanMonth, ExpansionSource, ExpansionStrategy } from './types';
 
 /** دفعة عتوكة قيد التربية مع تاريخ وعمر حقيقي */
 export interface PendingRearingBatch {
@@ -101,7 +101,6 @@ function weeksBetween(fromISO: string, toISO: string): number {
  */
 function computePulletArrivalMonth(effectiveAgeWeeks: number): number {
   if (effectiveAgeWeeks >= 20) return 1;
-  // من 16 إلى 19 أسبوعاً: تكمل التحضير في الشهر 1 وتدخل الإنتاج الفعلي في الشهر 2
   const weeksToSteadyLay = Math.max(0, 22 - effectiveAgeWeeks);
   return Math.max(2, Math.ceil(weeksToSteadyLay / 4.33));
 }
@@ -120,20 +119,26 @@ interface Cohort {
 }
 
 /**
- * توليد خطة توسع متكاملة وواقعية للوصول إلى صافي ربح شهري مستهدف (الافتراضي: 5000 د.م/شهر)
+ * توليد خطة توسع متكاملة وواقعية للوصول إلى صافي ربح شهري مستهدف (أو هدف 100 دجاجة + ملء الفقاسة 605)
  */
 export function generateStrategicExpansionPlan(
   baseline: FarmBaseline,
   options: {
     targetMonthlyProfit?: number;
     durationMonths?: number;
-    strategy?: 'incubator' | 'hybrid' | 'purchased';
+    strategy?: ExpansionStrategy;
+    fillIncubatorFull?: boolean;  // خيار ملء الفقاسة بالكامل (605 بيضة)
+    monthlyPulletsAdd?: number;   // عدد العتوكة المضافة شهرياً في خطة التدرج (25-30)
+    pulletTargetHens?: number;    // عتبة القطيع قبل أو مع الفقاسة (100 دجاجة)
   } = {}
 ): ExpansionSummary {
   const { settings } = baseline;
   const targetProfit = options.targetMonthlyProfit ?? 5000;
   const duration = options.durationMonths ?? 12;
-  const strategy = options.strategy ?? 'incubator';
+  const strategy: ExpansionStrategy = options.strategy ?? 'incubator';
+  const fillIncubatorFull = options.fillIncubatorFull ?? (strategy === 'pullets_100_full_inc');
+  const monthlyPulletsAdd = Math.max(10, Math.min(60, options.monthlyPulletsAdd ?? 25));
+  const pulletTargetHens = Math.max(20, options.pulletTargetHens ?? 100);
   const today = baseline.today || new Date().toISOString().split('T')[0];
 
   const fertilityRate = (settings.targetRates.fertility || 85) / 100;
@@ -156,14 +161,7 @@ export function generateStrategicExpansionPlan(
   // هامش أمان 5% لتعويض النفوق الشهري وضمان البقاء فوق الهدف
   const targetHensNeeded = Math.ceil((targetProfit * 1.05) / netProfitPerHenMonth);
 
-  // إجمالي الديوك اللازمة للقطيع النهائي (1 ديك لكل 12 دجاجة)
-  const targetRoostersTotal = Math.max(baseline.currentRoosters, Math.ceil(targetHensNeeded / 12));
-  let roostersRemainingToAcquire = Math.max(0, targetRoostersTotal - baseline.currentRoosters);
-
   // ===== 1) تحليل الأصول الحالية =====
-  const cohorts: Cohort[] = [];
-
-  // --- (أ) دفعات التربية القائمة (مثل ATK-2611: 20 أنثى + 2 ذكور بعمر ~18 أسبوعاً) ---
   const rearingBatches = baseline.rearingBatches || [];
   const rearingPlanEntries: {
     batchCode: string;
@@ -196,16 +194,26 @@ export function generateStrategicExpansionPlan(
     });
   }
 
-  // --- (ب) دفعات الفقاسة القائمة (مثل F2611-01: 71 بيضة موضوعة منذ ~7 أيام) ---
+  // --- دفعات الفقاسة القائمة (مثل F2611-01: 71 بيضة موضوعة منذ ~7 أيام) ---
   const incBatches = baseline.incubatorBatches || [];
+  const existingIncDrafts: {
+    label: string;
+    daysToHatch: number;
+    hatchMonth: number;
+    totalChicks: number;
+    females: number;
+    totalMales: number;
+    maleSaleMonth: number;
+    arrivalMonth: number;
+  }[] = [];
+
   for (const ib of incBatches) {
     const incStartDate = new Date(ib.startDate);
     const todayDate = new Date(today);
     const daysSinceStart = Math.max(0, Math.floor((todayDate.getTime() - incStartDate.getTime()) / (24 * 60 * 60 * 1000)));
-    const daysToHatch = Math.max(0, 21 - daysSinceStart); // المتبقي للفقس (مثلاً 14-15 يوماً)
+    const daysToHatch = Math.max(0, 21 - daysSinceStart);
     const hatchMonth = Math.max(1, Math.ceil(Math.max(1, daysToHatch) / 30));
 
-    // إن سُجّل عدد البيض المخصب بعد فحص اليوم 7 نعتمد عليه، وإلا نضرب الإخصاب × الفقس
     const expectedHatched =
       ib.fertilizedCount && ib.fertilizedCount > 0
         ? ib.fertilizedCount * hatchRate
@@ -215,85 +223,138 @@ export function generateStrategicExpansionPlan(
     const females = Math.round(totalChicks * 0.5);
     const totalMales = Math.max(0, totalChicks - females);
 
-    // نحتفظ بعدد محدود فقط إن احتجنا لتدعيم الديوك، والباقي يُباع بعمر 3.5-4 أشهر
-    const keepForBreeding = Math.min(totalMales, Math.min(4, roostersRemainingToAcquire));
-    roostersRemainingToAcquire = Math.max(0, roostersRemainingToAcquire - keepForBreeding);
-    const malesToSell = Math.max(0, totalMales - keepForBreeding);
-
-    // عمر 3.5 - 4 أشهر بعد الفقس ≈ 110 يوم
     const maleSaleMonth = Math.max(hatchMonth + 3, Math.ceil((daysToHatch + 110) / 30));
-    // عمر 20 أسبوعاً للإنتاج (140 يوم بعد الفقس)
     const arrivalMonth = Math.max(hatchMonth + 5, Math.ceil((daysToHatch + 140) / 30));
 
-    cohorts.push({
+    existingIncDrafts.push({
       label: ib.batchCode,
-      hatchDayOffset: daysToHatch,
+      daysToHatch,
       hatchMonth,
       totalChicks,
       females,
-      malesToSell,
-      malesKeptForBreeding: keepForBreeding,
-      arrivalMonth,
+      totalMales,
       maleSaleMonth,
-      extEggCost: 0, // تم دفع تكلفتها مسبقاً
+      arrivalMonth,
     });
   }
 
-  // ===== 2) حساب الإناث الإضافية المطلوبة للوصول إلى الهدف =====
-  const existingIncFemales = cohorts.reduce((s, c) => s + c.females, 0);
+  // ===== 2) حساب الإناث المتوقعة من الأصول الحالية =====
+  const existingIncFemales = existingIncDrafts.reduce((s, c) => s + c.females, 0);
   const startingProjectedHens = Math.round(
     (baseline.currentLayingHens + totalPendingHens + existingIncFemales) * 0.96
   );
   const additionalHensNeeded = Math.max(0, targetHensNeeded - startingProjectedHens);
 
-  // ===== 3) جدولة الدفعات المستقبلية ضمن سعة الفقاسة (605 بيضة) =====
+  // ===== 3) جدولة الدفعات (شراء عتوكة + تفقيس) بناءً على الاستراتيجية =====
   const incubatorPlacements: Record<number, { eggs: number }> = {};
   const purchasedArrivals: Record<number, number> = {};
 
   // نسبة الإناث السالمة لكل بيضة موضوعة = الإخصاب × الفقس × 50% إناث × البقاء
   const femalesPerEgg = overallHatchOfSet * 0.5 * survivalRate; // ~0.3128
 
-  if (additionalHensNeeded > 0) {
+  if (strategy === 'pullets_100_full_inc') {
+    // 1) إضافة 25-30 عتوكة جاهزة كل شهر حتى الوصول إلى عتبة 100 دجاجة لتوفير سيولة وتخفيف العبء المالي
+    let simHens = baseline.currentLayingHens;
+    let milestoneMonth = 0;
+
+    for (let m = 1; m <= duration; m++) {
+      const mort = m === 1 ? 0 : Math.round(simHens * 0.005);
+      const atkAdded = rearingPlanEntries
+        .filter(r => r.arrivalMonth === m)
+        .reduce((s, r) => s + r.femalesCount, 0);
+      const incAdded = existingIncDrafts
+        .filter(c => c.arrivalMonth === m)
+        .reduce((s, c) => s + c.females, 0);
+
+      simHens = Math.max(0, simHens - mort + atkAdded + incAdded);
+
+      if (simHens < pulletTargetHens) {
+        purchasedArrivals[m] = monthlyPulletsAdd;
+        simHens += monthlyPulletsAdd;
+      }
+      if (milestoneMonth === 0 && simHens >= pulletTargetHens) {
+        milestoneMonth = m;
+      }
+    }
+
+    // 2) خيار ملء الفقاسة بالكامل (605 بيضة) بمجرد بلوغ ~100 دجاجة (تمويل ذاتي 100% من بيض المزرعة)
+    if (fillIncubatorFull) {
+      const firstIncMonth = Math.min(
+        Math.max(incBatches.length > 0 ? 2 : 1, milestoneMonth || 3),
+        Math.max(2, duration - 5)
+      );
+      incubatorPlacements[firstIncMonth] = { eggs: incCapacity };
+
+      // إذا كان الهدف الربحي أعلى مما توفره دورة 605 واحدة (~310 دجاجة)، نضيف دورات ممتلئة أخرى
+      let projectedWithInc = simHens + Math.round(incCapacity * femalesPerEgg);
+      let nextSlot = firstIncMonth + 3;
+      const maxSlot = Math.max(2, duration - 5);
+      while (projectedWithInc < targetHensNeeded && nextSlot <= maxSlot) {
+        incubatorPlacements[nextSlot] = { eggs: incCapacity };
+        projectedWithInc += Math.round(incCapacity * femalesPerEgg);
+        nextSlot += 3;
+      }
+    }
+  } else if (additionalHensNeeded > 0) {
     if (strategy === 'incubator') {
-      // الشهر الأول مشغول بدفعة F2611-01 الحالية حتى يوم ~15؛ أول دورة جديدة تبدأ من الشهر 2
       const firstMonth = incBatches.length > 0 ? 2 : 1;
       const maxPlacementMonth = Math.max(firstMonth, duration - 5);
-      // نفضل 3 دفعات متباعدة (أشهر 2، 4، 6 في خطة السنة) لتعظيم الاعتماد على بيض المزرعة وتقليل السيولة
-      let batchMonths =
-        duration <= 12
-          ? [firstMonth, firstMonth + 2, firstMonth + 4].filter(m => m <= maxPlacementMonth)
-          : [firstMonth, firstMonth + 2, firstMonth + 4, firstMonth + 7, firstMonth + 10].filter(m => m <= maxPlacementMonth);
 
-      if (batchMonths.length === 0) batchMonths = [firstMonth];
-
-      const totalEggsNeeded = Math.ceil(additionalHensNeeded / femalesPerEgg);
-      // إن لم تكف 3 دفعات ضمن سعة الفقاسة، نفتح شهوراً إضافية
-      if (totalEggsNeeded > batchMonths.length * incCapacity) {
-        const extraMonths: number[] = [];
-        for (let m = firstMonth; m <= maxPlacementMonth; m++) {
-          extraMonths.push(m);
+      if (fillIncubatorFull) {
+        // ملء الفقاسة بالكامل (605 بيضة) في أقل عدد ممكن من الدورات (شامل البيض الخارجي إذا لزم)
+        const totalEggsNeeded = Math.ceil(additionalHensNeeded / femalesPerEgg);
+        let remainingEggs = Math.max(incCapacity, totalEggsNeeded);
+        for (let m = firstMonth; m <= maxPlacementMonth && remainingEggs > 0; m += 2) {
+          const batchEggs = remainingEggs >= incCapacity ? incCapacity : Math.min(incCapacity, remainingEggs);
+          incubatorPlacements[m] = { eggs: batchEggs };
+          remainingEggs = Math.max(0, remainingEggs - batchEggs);
         }
-        batchMonths = extraMonths;
-      }
+      } else {
+        // تفقيس تدريجي ذاتي لتقليل رأس المال المؤقت والاعتماد على بيض المزرعة
+        let batchMonths =
+          duration <= 12
+            ? [firstMonth, firstMonth + 2, firstMonth + 4].filter(m => m <= maxPlacementMonth)
+            : [firstMonth, firstMonth + 2, firstMonth + 4, firstMonth + 7, firstMonth + 10].filter(m => m <= maxPlacementMonth);
 
-      let remainingEggs = totalEggsNeeded;
-      for (let idx = 0; idx < batchMonths.length && remainingEggs > 0; idx++) {
-        const bm = batchMonths[idx];
-        const slotsLeft = batchMonths.length - idx;
-        const suggested = Math.ceil(remainingEggs / slotsLeft);
-        const batchEggs = Math.min(incCapacity, Math.max(60, suggested));
-        incubatorPlacements[bm] = { eggs: batchEggs };
-        remainingEggs = Math.max(0, remainingEggs - batchEggs);
+        if (batchMonths.length === 0) batchMonths = [firstMonth];
+
+        const totalEggsNeeded = Math.ceil(additionalHensNeeded / femalesPerEgg);
+        if (totalEggsNeeded > batchMonths.length * incCapacity) {
+          const extraMonths: number[] = [];
+          for (let m = firstMonth; m <= maxPlacementMonth; m++) {
+            extraMonths.push(m);
+          }
+          batchMonths = extraMonths;
+        }
+
+        let remainingEggs = totalEggsNeeded;
+        for (let idx = 0; idx < batchMonths.length && remainingEggs > 0; idx++) {
+          const bm = batchMonths[idx];
+          const slotsLeft = batchMonths.length - idx;
+          const suggested = Math.ceil(remainingEggs / slotsLeft);
+          const batchEggs = Math.min(incCapacity, Math.max(60, suggested));
+          incubatorPlacements[bm] = { eggs: batchEggs };
+          remainingEggs = Math.max(0, remainingEggs - batchEggs);
+        }
       }
     } else if (strategy === 'hybrid') {
       const incShare = Math.ceil(additionalHensNeeded * 0.65);
       const buyShare = Math.max(0, additionalHensNeeded - incShare);
-      const eggsPerBatch = Math.ceil(incShare / femalesPerEgg / 2);
-      incubatorPlacements[2] = { eggs: Math.min(incCapacity, eggsPerBatch) };
-      incubatorPlacements[4] = { eggs: Math.min(incCapacity, eggsPerBatch) };
-      if (buyShare > 0) {
-        purchasedArrivals[3] = Math.ceil(buyShare / 2);
-        purchasedArrivals[5] = Math.floor(buyShare / 2);
+      if (fillIncubatorFull) {
+        incubatorPlacements[2] = { eggs: incCapacity };
+        const remainAfterInc = Math.max(0, additionalHensNeeded - Math.round(incCapacity * femalesPerEgg));
+        if (remainAfterInc > 0) {
+          purchasedArrivals[3] = Math.ceil(remainAfterInc / 2);
+          purchasedArrivals[5] = Math.floor(remainAfterInc / 2);
+        }
+      } else {
+        const eggsPerBatch = Math.ceil(incShare / femalesPerEgg / 2);
+        incubatorPlacements[2] = { eggs: Math.min(incCapacity, eggsPerBatch) };
+        incubatorPlacements[4] = { eggs: Math.min(incCapacity, eggsPerBatch) };
+        if (buyShare > 0) {
+          purchasedArrivals[3] = Math.ceil(buyShare / 2);
+          purchasedArrivals[5] = Math.floor(buyShare / 2);
+        }
       }
     } else {
       const perStep = Math.ceil(additionalHensNeeded / 4);
@@ -304,18 +365,52 @@ export function generateStrategicExpansionPlan(
     }
   }
 
-  // ===== 4) تجهيز الكوهورتات من دفعات الفقاسة المخططة =====
-  Object.entries(incubatorPlacements).forEach(([mStr, cfg]) => {
+  // ===== 4) تجهيز الكوهورتات وحساب احتياج الديوك وفق الحجم الفعلي المتوقع للقطيع =====
+  const plannedIncFemales = Object.values(incubatorPlacements).reduce(
+    (s, cfg) => s + Math.round(Math.round(cfg.eggs * overallHatchOfSet * survivalRate) * 0.5),
+    0
+  );
+  const totalPurchasedHens = Object.values(purchasedArrivals).reduce((s, n) => s + n, 0);
+  const peakProjectedHens = Math.max(
+    targetHensNeeded,
+    startingProjectedHens + totalPurchasedHens + plannedIncFemales
+  );
+  const targetRoostersTotal = Math.max(baseline.currentRoosters, Math.ceil(peakProjectedHens / 12));
+  let roostersRemainingToAcquire = Math.max(0, targetRoostersTotal - baseline.currentRoosters);
+
+  const cohorts: Cohort[] = [];
+
+  for (const d of existingIncDrafts) {
+    const keepForBreeding = Math.min(d.totalMales, Math.min(4, roostersRemainingToAcquire));
+    roostersRemainingToAcquire = Math.max(0, roostersRemainingToAcquire - keepForBreeding);
+    cohorts.push({
+      label: d.label,
+      hatchDayOffset: d.daysToHatch,
+      hatchMonth: d.hatchMonth,
+      totalChicks: d.totalChicks,
+      females: d.females,
+      malesToSell: Math.max(0, d.totalMales - keepForBreeding),
+      malesKeptForBreeding: keepForBreeding,
+      arrivalMonth: d.arrivalMonth,
+      maleSaleMonth: d.maleSaleMonth,
+      extEggCost: 0,
+    });
+  }
+
+  const plannedEntries = Object.entries(incubatorPlacements).sort((a, b) => Number(a[0]) - Number(b[0]));
+  plannedEntries.forEach(([mStr, cfg], idx) => {
     const pm = Number(mStr);
     const setDayOffset = (pm - 1) * 30;
-    const hatchDayOffset = setDayOffset + 21; // 21 يوم تحضين
-    const hatchMonth = pm; // يوضع أول الشهر ويفقس في الأسبوع 3 من نفس الشهر
+    const hatchDayOffset = setDayOffset + 21;
+    const hatchMonth = pm;
 
     const totalChicks = Math.round(cfg.eggs * overallHatchOfSet * survivalRate);
     const females = Math.round(totalChicks * 0.5);
     const totalMales = Math.max(0, totalChicks - females);
 
-    const keepForBreeding = Math.min(totalMales, Math.ceil(roostersRemainingToAcquire / 2) || roostersRemainingToAcquire);
+    const remainingBatches = plannedEntries.length - idx;
+    const desiredKeep = remainingBatches <= 1 ? roostersRemainingToAcquire : Math.ceil(roostersRemainingToAcquire / remainingBatches);
+    const keepForBreeding = Math.min(totalMales, desiredKeep);
     roostersRemainingToAcquire = Math.max(0, roostersRemainingToAcquire - keepForBreeding);
     const malesToSell = Math.max(0, totalMales - keepForBreeding);
 
@@ -345,6 +440,7 @@ export function generateStrategicExpansionPlan(
   let minCumCash = 0;
   let breakEvenMonth: number | null = null;
   let targetReachedMonth: number | null = null;
+  let milestone100Noted = activeHens >= 100;
   let totalIncubatorEggsUsed = 0;
   let totalMalesSoldRevenue = 0;
 
@@ -360,7 +456,7 @@ export function generateStrategicExpansionPlan(
       }
     }
 
-    // (أ) دخول العتوكة القائمة (ATK-2611) عند بلوغ جاهزية الإنتاج
+    // (أ) دخول العتوكة القائمة (ATK-2611)
     for (const rp of rearingPlanEntries) {
       if (rp.arrivalMonth === m && rp.femalesCount > 0) {
         addedHens += rp.femalesCount;
@@ -381,14 +477,19 @@ export function generateStrategicExpansionPlan(
     if (boughtThisMonth > 0) {
       addedHens += boughtThisMonth;
       source = 'purchased';
-      notesParts.push(`شراء ${boughtThisMonth} عتوكة جاهزة`);
+      notesParts.push(`إضافة ${boughtThisMonth} عتوكة جاهزة`);
     }
 
     // 2) النفوق الشهري للقطيع البياض (~0.5%)
     const mortality = m === 1 ? 0 : Math.round(activeHens * 0.005);
     activeHens = Math.max(0, activeHens - mortality + addedHens);
 
-    // 3) إنتاج البيض والبيض المحول للفقاسة (سعة قصوى 605)
+    if (!milestone100Noted && activeHens >= 100) {
+      milestone100Noted = true;
+      notesParts.push(`✅ بلوغ عتبة +100 دجاجة بياضة`);
+    }
+
+    // 3) إنتاج البيض والبيض المحول للفقاسة (حتى 605 بيضة)
     const expectedEggProduction = Math.round(activeHens * 30 * prodRate);
     const incPlan = incubatorPlacements[m];
     const eggsForInc = incPlan ? incPlan.eggs : 0;
@@ -401,10 +502,11 @@ export function generateStrategicExpansionPlan(
     const externalEggCost = externalEggsToBuy * fertEggPrice;
 
     if (eggsForInc > 0) {
+      const fullTag = eggsForInc >= incCapacity ? ' (ملء الفقاسة 100%)' : '';
       notesParts.push(
         externalEggsToBuy > 0
-          ? `تفقيس ${eggsForInc} بيضة (${internalEggsDiverted} من المزرعة + ${externalEggsToBuy} شراء)`
-          : `تفقيس ${eggsForInc} بيضة من إنتاج المزرعة (0 د.م شراء)`
+          ? `تفقيس ${eggsForInc} بيضة${fullTag} (${internalEggsDiverted} من المزرعة + ${externalEggsToBuy} شراء)`
+          : `تفقيس ${eggsForInc} بيضة${fullTag} من إنتاج المزرعة (0 د.م شراء)`
       );
     }
 
@@ -430,10 +532,9 @@ export function generateStrategicExpansionPlan(
       }
     }
 
-    // 5) تكاليف التربية الشهرية (علف الكتاكيت/العتوكة قيد النمو)
+    // 5) تكاليف التربية الشهرية (علف الكتاكيت + شراء العتوكة + تكلفة البيض الخارجي إن وجد)
     let rearingCost = externalEggCost + (eggsForInc > 0 ? incBatchOverhead : 0);
 
-    // تكلفة تربية دفعات الفقاسة (بحساب عدد الأيام الفعلية في شهر الفقس)
     for (const c of cohorts) {
       const monthStartDay = (m - 1) * 30;
       const monthEndDay = m * 30;
@@ -448,7 +549,6 @@ export function generateStrategicExpansionPlan(
       rearingCost += birdsToFeed * getMonthlyChickFeedCost(ageMonth, settings) * fractionOfMonth;
     }
 
-    // تكلفة تغذية دفعات العتوكة القائمة قبل دخولها الإنتاج (مثلاً ATK-2611 في الشهر 1)
     for (const rp of rearingPlanEntries) {
       if (m < rp.arrivalMonth) {
         const futureAgeWeeks = rp.effectiveAgeWeeks + (m - 1) * 4.33;
@@ -465,7 +565,6 @@ export function generateStrategicExpansionPlan(
     totalMalesSoldRevenue += maleSalesRevenue;
 
     // 6) تكاليف قطيع البياض والديوك النشطة
-    // نحتسب الديوك الحالية (5) + أي ديوك تربية ناضجة انتقيناها مع توسع القطيع (1:12)
     const maturedRetainedRoosters = cohorts
       .filter(c => c.arrivalMonth <= m)
       .reduce((s, c) => s + c.malesKeptForBreeding, 0);

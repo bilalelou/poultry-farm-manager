@@ -243,6 +243,7 @@ export const FLOCK_CATEGORY_LABELS: Record<FlockCategory, string> = {
   broilers: 'تسمين / لحم',
 };
 export type ExpansionSource = 'incubator' | 'purchased';
+export type ExpansionStrategy = 'incubator' | 'hybrid' | 'purchased' | 'pullets_100_full_inc';
 
 export interface ExpansionPlanMonth {
   id?: number;
@@ -272,7 +273,7 @@ export interface ExpansionPlan {
   name: string;
   durationMonths: number; // 12 or 24
   targetMonthlyProfit?: number;
-  strategy?: 'incubator' | 'hybrid' | 'purchased';
+  strategy?: ExpansionStrategy;
   description?: string;
   startDate: string;
   createdAt: string;

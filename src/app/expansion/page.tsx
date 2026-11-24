@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import AppShell from '@/components/AppShell';
 import { Card, Badge, LoadingSpinner, ConfirmDialog } from '@/components/ui';
 import { db, getSettings } from '@/lib/db';
-import type { Settings, ExpansionPlan } from '@/lib/types';
+import type { Settings, ExpansionPlan, ExpansionStrategy } from '@/lib/types';
 import {
   generateStrategicExpansionPlan,
   estimateMonthlyProfitPerHen,
@@ -56,7 +56,9 @@ export default function ExpansionPage() {
   const [planName, setPlanName] = useState('خطة الوصول إلى 5,000 د.م صافي ربح شهري (خلال سنة)');
   const [targetMonthlyProfit, setTargetMonthlyProfit] = useState<number>(5000);
   const [duration, setDuration] = useState<number>(12);
-  const [strategy, setStrategy] = useState<'incubator' | 'hybrid' | 'purchased'>('incubator');
+  const [strategy, setStrategy] = useState<ExpansionStrategy>('incubator');
+  const [fillIncubatorFull, setFillIncubatorFull] = useState<boolean>(false);
+  const [monthlyPulletsAdd, setMonthlyPulletsAdd] = useState<number>(25);
 
   // Active plan rows & calculated summary
   const [summary, setSummary] = useState<ExpansionSummary | null>(null);
@@ -175,9 +177,11 @@ export default function ExpansionPage() {
     setPlanName(plan.name);
     setDuration(plan.durationMonths || 12);
     const tgt = plan.targetMonthlyProfit || 5000;
-    const strat = (plan.strategy || 'incubator') as 'incubator' | 'hybrid' | 'purchased';
+    const strat = (plan.strategy || 'incubator') as ExpansionStrategy;
     setTargetMonthlyProfit(tgt);
     setStrategy(strat);
+    const hasFullBatch = (plan.months || []).some(m => (m.incubatorEggsUsed || 0) >= (base?.incubatorCapacity || 605));
+    setFillIncubatorFull(hasFullBatch || strat === 'pullets_100_full_inc');
 
     if (plan.months && plan.months.length > 0 && base) {
       const rows: CalculatedMonthRow[] = plan.months.map(m => ({
@@ -232,20 +236,42 @@ export default function ExpansionPage() {
     }
   }
 
-  function recalculateSmartPlan(customStrategy?: 'incubator' | 'hybrid' | 'purchased', customTarget?: number, customDuration?: number) {
+  function recalculateSmartPlan(
+    customStrategy?: ExpansionStrategy,
+    customTarget?: number,
+    customDuration?: number,
+    customFillFull?: boolean,
+    customPulletsPerMonth?: number
+  ) {
     if (!baseline) return;
     const tgt = customTarget ?? targetMonthlyProfit;
     const dur = customDuration ?? duration;
     const strat = customStrategy ?? strategy;
+    const fillFull = customFillFull ?? fillIncubatorFull;
+    const pulletsPerMo = customPulletsPerMonth ?? monthlyPulletsAdd;
+
     const computed = generateStrategicExpansionPlan(baseline, {
       targetMonthlyProfit: tgt,
       durationMonths: dur,
       strategy: strat,
+      fillIncubatorFull: fillFull,
+      monthlyPulletsAdd: pulletsPerMo,
+      pulletTargetHens: 100,
     });
     setSummary(computed);
     setActivePlanId(null);
-    if (strat === 'incubator') {
-      setPlanName(`خطة الوصول إلى ${formatNumber(tgt)} د.م شهرياً عبر الفقاسة (${dur} شهراً)`);
+    if (strat === 'pullets_100_full_inc') {
+      setPlanName(
+        fillFull
+          ? `خطة 100 دجاجة (+${pulletsPerMo} عتوكة/شهر) + ملء الفقاسة ${baseline.incubatorCapacity} بيضة`
+          : `خطة الوصول لـ 100 دجاجة (+${pulletsPerMo} عتوكة/شهر) لتخفيف العبء المالي`
+      );
+    } else if (strat === 'incubator') {
+      setPlanName(
+        fillFull
+          ? `خطة ملء الفقاسة بالكامل (${baseline.incubatorCapacity} بيضة) لهدف ${formatNumber(tgt)} د.م`
+          : `خطة الوصول إلى ${formatNumber(tgt)} د.م شهرياً عبر الفقاسة (${dur} شهراً)`
+      );
     } else if (strat === 'hybrid') {
       setPlanName(`خطة هجينة (فقاسة + عتوكة) لهدف ${formatNumber(tgt)} د.م شهرياً (${dur} شهراً)`);
     } else {
@@ -587,17 +613,79 @@ export default function ExpansionPage() {
             <select
               value={strategy}
               onChange={e => {
-                const st = e.target.value as 'incubator' | 'hybrid' | 'purchased';
+                const st = e.target.value as ExpansionStrategy;
+                const nextFill = st === 'pullets_100_full_inc' ? true : fillIncubatorFull;
                 setStrategy(st);
-                recalculateSmartPlan(st, targetMonthlyProfit, duration);
+                if (st === 'pullets_100_full_inc') setFillIncubatorFull(true);
+                recalculateSmartPlan(st, targetMonthlyProfit, duration, nextFill, monthlyPulletsAdd);
               }}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium"
             >
+              <option value="pullets_100_full_inc">100 دجاجة (+25-30 عتوكة/شهر) + ملء الفقاسة 605</option>
               <option value="incubator">تفقيس ذاتي (من بيض المزرعة)</option>
               <option value="hybrid">هجين (فقاسة + شراء عتوكة)</option>
               <option value="purchased">شراء عتوكة جاهزة (سريع)</option>
             </select>
           </div>
+        </div>
+
+        {/* خيارات التخصيص: ملء الفقاسة 605 + عدد العتوكة الشهري */}
+        <div className="mt-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-wrap items-center justify-between gap-4">
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={fillIncubatorFull}
+              onChange={e => {
+                const checked = e.target.checked;
+                setFillIncubatorFull(checked);
+                recalculateSmartPlan(strategy, targetMonthlyProfit, duration, checked, monthlyPulletsAdd);
+              }}
+              disabled={strategy === 'purchased'}
+              className="w-4 h-4 accent-blue-600 rounded"
+            />
+            <span className="text-sm font-bold text-slate-800">
+              🥚 خيار ملء الفقاسة بالكامل ({baseline?.incubatorCapacity || 605} بيضة في الدورة)
+            </span>
+            <span className="text-xs text-slate-500 hidden sm:inline">
+              (يستخدم بيض المزرعة + شراء خارجي إذا لزم لتفادي تشغيل الفقاسة شبه فارغة)
+            </span>
+          </label>
+
+          {strategy === 'pullets_100_full_inc' && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-amber-800">🐔 العتوكة الشهرية (حتى 100 دجاجة):</span>
+              {[25, 28, 30].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => {
+                    setMonthlyPulletsAdd(n);
+                    recalculateSmartPlan(strategy, targetMonthlyProfit, duration, fillIncubatorFull, n);
+                  }}
+                  className={cn(
+                    'px-2.5 py-1 rounded-lg text-xs font-bold transition',
+                    monthlyPulletsAdd === n
+                      ? 'bg-amber-600 text-white'
+                      : 'bg-white border border-amber-300 text-amber-800 hover:bg-amber-50'
+                  )}
+                >
+                  {n}/شهر
+                </button>
+              ))}
+              <input
+                type="number"
+                min={10}
+                max={50}
+                value={monthlyPulletsAdd}
+                onChange={e => {
+                  const v = Math.max(10, Math.min(50, +e.target.value || 25));
+                  setMonthlyPulletsAdd(v);
+                  recalculateSmartPlan(strategy, targetMonthlyProfit, duration, fillIncubatorFull, v);
+                }}
+                className="w-16 px-2 py-1 border border-amber-300 rounded-lg text-xs font-bold text-center bg-white"
+              />
+            </div>
+          )}
         </div>
 
         <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
@@ -640,7 +728,7 @@ export default function ExpansionPage() {
                   </h3>
                   <p className="text-sm text-slate-700 mt-1">
                     {summary.maxWorkingCapitalGap > 0
-                      ? `تحتاج خلال أشهر نمو الكتاكيت الأولى (أشهر 2-6) إلى سيولة مؤقتة (رأس مال دوار للعلف) تبلغ أقصاها ${formatCurrency(summary.maxWorkingCapitalGap, sym)}، وتُسترد بالكامل في الشهر ${summary.breakEvenMonth || 8} لتبدأ الأرباح الصافية.`
+                      ? `تحتاج خلال الأشهر الأولى للتأسيس والنمو إلى سيولة مؤقتة (رأس مال دوار) تبلغ أقصاها ${formatCurrency(summary.maxWorkingCapitalGap, sym)}${summary.breakEvenMonth ? `، وتُسترد بالكامل في الشهر ${summary.breakEvenMonth} لتبدأ الأرباح الصافية` : ''}.`
                       : 'التدفق النقدي إيجابي وذاتي التمويل بالكامل طوال مدة الخطة!'}
                   </p>
                 </div>
@@ -656,7 +744,7 @@ export default function ExpansionPage() {
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
             <Card className="p-4">
               <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-slate-500">القطيع البياض بنهاية السنة</span>
+                <span className="text-xs text-slate-500">القطيع البياض بنهاية الخطة</span>
                 <Bird className="w-4 h-4 text-blue-600" />
               </div>
               <p className="text-2xl font-black text-blue-700">{formatNumber(summary.finalActiveHens)} <span className="text-xs font-normal">دجاجة</span></p>
