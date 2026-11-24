@@ -188,7 +188,7 @@ export const db = {
 };
 
 export const DEFAULT_SETTINGS: Settings = {
-  incubatorCapacity: 100,
+  incubatorCapacity: 605,
   feedPrices: { starter: 5.5, grower: 5.0, preLayer: 5.0, layer: 5.0 },
   dailyFeedConsumption: { starter: 25, grower: 65, preLayer: 90, layer: 110 },
   sellingPrices: { egg: 1.5, tray: 45, fertilizedEgg: 3.5, chick: 7.0, culledHen: 40, maleBroiler: 30, manure: 15 },

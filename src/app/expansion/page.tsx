@@ -84,11 +84,18 @@ export default function ExpansionPage() {
 
       // بناء خط الأساس الحي من بيانات المزرعة الفعلية في PostgreSQL
       const sortedProds = [...prods].sort((a, b) => (b.date > a.date ? 1 : -1));
-      const layerGroup = flocks.find(f => f.category === 'layers');
-      const roosterGroup = flocks.find(f => f.category === 'roosters');
+      const layerGroups = flocks.filter(f => f.category === 'layers');
+      const roosterGroups = flocks.filter(f => f.category === 'roosters');
 
-      const currentLayingHens = layerGroup?.femalesCount ?? sortedProds[0]?.activeHenCount ?? 10;
-      const currentRoosters = roosterGroup?.malesCount ?? 5;
+      const currentLayingHens =
+        layerGroups.length > 0
+          ? layerGroups.reduce((sum, f) => sum + (f.femalesCount || 0), 0)
+          : sortedProds[0]?.activeHenCount ?? 10;
+      const currentRoosters =
+        roosterGroups.length > 0 || layerGroups.length > 0
+          ? roosterGroups.reduce((sum, f) => sum + (f.malesCount || 0), 0) +
+            layerGroups.reduce((sum, f) => sum + (f.malesCount || 0), 0)
+          : 5;
 
       const activeRearing = rears.filter(r => r.status === 'rearing');
       const pendingPulletsHens = activeRearing.reduce((sum, r) => {
@@ -101,19 +108,20 @@ export default function ExpansionPage() {
         .filter(b => b.status === 'incubating')
         .reduce((sum, b) => sum + b.eggCount, 0);
 
-      let detectedCap = s.incubatorCapacity || 100;
+      let detectedCap = s.incubatorCapacity || 605;
       const incAsset = vals.find(v => v.category === 'equipment' && v.name.includes('فقاسة'));
       if (incAsset) {
         const match = incAsset.name.match(/(\d+)/);
         if (match && Number(match[1]) > detectedCap) detectedCap = Number(match[1]);
       }
 
-      // بناء بيانات التوقيت الحقيقية لدفعات التربية والفقاسة
+      // بناء بيانات التوقيت والأعمار الحقيقية لدفعات التربية والفقاسة
       const rearingBatchesData: PendingRearingBatch[] = activeRearing.map(r => {
         const healthy = r.currentHealthyCount ?? Math.max(0, r.initialChickCount - (r.mortalityCount || 0));
         return {
           batchCode: r.batchCode || `R-${r.id}`,
           startDate: r.startDate,
+          currentAgeWeeks: r.currentAgeWeeks ?? undefined,
           femalesCount: Math.max(0, healthy - (r.malesCount || 0)),
           malesCount: r.malesCount || 0,
         };
@@ -125,6 +133,7 @@ export default function ExpansionPage() {
           batchCode: b.batchCode || `INC-${b.id}`,
           startDate: b.startDate,
           eggCount: b.eggCount,
+          fertilizedCount: b.fertilizedCount ?? undefined,
         }));
 
       const farmBase: FarmBaseline = {
@@ -201,7 +210,7 @@ export default function ExpansionPage() {
       let targetReachedMonth: number | null = null;
       for (const r of rows) {
         if (r.cumulativeProfit < minCumCash) minCumCash = r.cumulativeProfit;
-        if (breakEvenMonth === null && r.month > 4 && r.cumulativeProfit > 0) breakEvenMonth = r.month;
+        if (breakEvenMonth === null && r.month > 1 && minCumCash < 0 && r.cumulativeProfit > 0) breakEvenMonth = r.month;
         if (targetReachedMonth === null && r.expectedProfit >= tgt) targetReachedMonth = r.month;
       }
 
@@ -283,7 +292,7 @@ export default function ExpansionPage() {
       cumProfit += expectedProfit;
 
       if (cumProfit < minCumCash) minCumCash = cumProfit;
-      if (breakEvenMonth === null && r.month > 4 && cumProfit > 0) breakEvenMonth = r.month;
+      if (breakEvenMonth === null && r.month > 1 && minCumCash < 0 && cumProfit > 0) breakEvenMonth = r.month;
       if (targetReachedMonth === null && expectedProfit >= targetMonthlyProfit) targetReachedMonth = r.month;
 
       rows[i] = {
@@ -327,7 +336,7 @@ export default function ExpansionPage() {
         durationMonths: duration,
         targetMonthlyProfit,
         strategy,
-        description: `خطة مبنية على ${baseline.currentLayingHens} دجاجة بياضة + ${baseline.pendingPulletsHens} عتوكة + ${baseline.incubatingEggsCount} بيضة في الفقاسة (الهدف: ${targetMonthlyProfit} د.م/شهر)`,
+        description: `خطة مبنية على ${baseline.currentLayingHens} دجاجة بياضة + ${baseline.currentRoosters} ديوك + ${baseline.pendingPulletsHens + baseline.pendingPulletsMales} عتوكة + ${baseline.incubatingEggsCount} بيضة في الفقاسة (سعة ${baseline.incubatorCapacity}) (الهدف: ${targetMonthlyProfit} د.م/شهر)`,
         startDate: todayISO(),
         months: summary.months.map(m => ({
           month: m.month,
@@ -443,28 +452,38 @@ export default function ExpansionPage() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
             <div className="bg-white p-3 rounded-xl border border-slate-200">
-              <p className="text-xs text-slate-500">الدجاج البياض الحالي</p>
+              <p className="text-xs text-slate-500">القطيع الحالي النشط</p>
               <p className="text-lg font-black text-pink-700">{baseline.currentLayingHens} دجاجة</p>
+              <p className="text-[11px] text-blue-700 font-bold mt-0.5">+ {baseline.currentRoosters} ديوك</p>
             </div>
             <div className="bg-white p-3 rounded-xl border border-slate-200">
-              <p className="text-xs text-slate-500">عتوكة قيد الاستعداد</p>
-              <p className="text-lg font-black text-amber-600">+{baseline.pendingPulletsHens} أنثى</p>
+              <p className="text-xs text-slate-500">عتوكة تدخل (1-2 شهر)</p>
+              <p className="text-lg font-black text-amber-600">{baseline.pendingPulletsHens + baseline.pendingPulletsMales} طير</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{baseline.pendingPulletsHens} أنثى + {baseline.pendingPulletsMales} ذكور</p>
             </div>
             <div className="bg-white p-3 rounded-xl border border-slate-200">
               <p className="text-xs text-slate-500">بيض بالفقاسة حالياً</p>
               <p className="text-lg font-black text-blue-700">{baseline.incubatingEggsCount} بيضة</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {baseline.incubatorBatches?.[0]
+                  ? `منذ ${Math.max(1, Math.floor((new Date(baseline.today).getTime() - new Date(baseline.incubatorBatches[0].startDate).getTime()) / 86400000) + 1)} أيام`
+                  : 'سعة ' + baseline.incubatorCapacity}
+              </p>
             </div>
             <div className="bg-white p-3 rounded-xl border border-slate-200">
-              <p className="text-xs text-slate-500">سعر البيضة / الصينية</p>
+              <p className="text-xs text-slate-500">البيض / بيع الذكور</p>
               <p className="text-lg font-black text-emerald-700">{settings.sellingPrices.egg} {sym}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">الديك (3-4 ش): {settings.sellingPrices.maleBroiler} {sym}</p>
             </div>
             <div className="bg-white p-3 rounded-xl border border-slate-200">
               <p className="text-xs text-slate-500">تكلفة علف البياض</p>
               <p className="text-lg font-black text-slate-800">{settings.feedPrices.layer} {sym}/كغ</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">نسبة الإخصاب: {settings.targetRates.fertility}%</p>
             </div>
             <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200">
               <p className="text-xs text-emerald-700 font-bold">ربح الدجاجة الشهري</p>
               <p className="text-lg font-black text-emerald-800">~{summary?.netProfitPerHenMonth || 25} {sym}</p>
+              <p className="text-[11px] text-emerald-700 font-medium mt-0.5">مبيعات الذكور: {formatCurrency(summary?.totalMalesSoldRevenue || 0, sym)}</p>
             </div>
           </div>
         </Card>
@@ -627,7 +646,7 @@ export default function ExpansionPage() {
                 </div>
               </div>
               <div className="text-left md:text-right shrink-0 bg-white px-4 py-2.5 rounded-xl border border-slate-200">
-                <p className="text-xs text-slate-500">صافي الربح التراكمي بعد سنة</p>
+                <p className="text-xs text-slate-500">صافي الربح التراكمي ({duration} شهراً)</p>
                 <p className="text-2xl font-black text-emerald-700">{formatCurrency(summary.totalCumulativeProfit, sym)}</p>
               </div>
             </div>

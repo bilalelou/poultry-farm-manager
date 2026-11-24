@@ -9,10 +9,10 @@ export async function seedPostgres() {
   // 1. Settings
   await prisma.settings.create({
     data: {
-      incubatorCapacity: 100,
+      incubatorCapacity: 605,
       feedPrices: { starter: 5.5, grower: 5.0, preLayer: 5.0, layer: 5.0 },
       dailyFeedConsumption: { starter: 25, grower: 65, preLayer: 90, layer: 110 },
-      sellingPrices: { egg: 1.5, tray: 45, fertilizedEgg: 3.5, chick: 7.0, culledHen: 40, maleBroiler: 30, manure: 15 },
+      sellingPrices: { egg: 2.0, tray: 60, fertilizedEgg: 3.5, chick: 7.0, culledHen: 40, maleBroiler: 30, manure: 15 },
       marketReadyHenPrice: 75,
       targetRates: { fertility: 85, hatch: 80, production: 75, maxMortality: 5 },
       housingDensity: 6,
@@ -48,7 +48,7 @@ export async function seedPostgres() {
       currentHealthyCount: 22,
       mortalityCount: 14,
       malesCount: 2,
-      currentAgeWeeks: 5,
+      currentAgeWeeks: 18,
       status: 'rearing',
       notes: 'شراء 36 عتوكة بـ 40 درهم للحبة، نفق منها 14 وتبقى 22 حبة سليمة (منها ذكور/ديوك) ستدخل الإنتاج قريباً',
     },

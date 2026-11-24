@@ -34,7 +34,7 @@ export async function seedDatabase(forceReset: boolean = false) {
   // 2. تحديث الإعدادات الواقعية (سعر العلف 5 درهم، سعة الفقاسة...)
   const realSettings: Settings = {
     ...DEFAULT_SETTINGS,
-    incubatorCapacity: 100, // سعة مناسبة لحجم الدفعة
+    incubatorCapacity: 605, // سعة الفقاسة الفعلية 605 بيضة
     feedPrices: {
       starter: 5.5,
       grower: 5.0,

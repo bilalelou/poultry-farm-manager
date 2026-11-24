@@ -14,10 +14,10 @@ export async function GET(request: Request) {
         if (!settings) {
           settings = await prisma.settings.create({
             data: {
-              incubatorCapacity: 100,
+              incubatorCapacity: 605,
               feedPrices: { starter: 5.5, grower: 5.0, preLayer: 5.0, layer: 5.0 },
               dailyFeedConsumption: { starter: 25, grower: 65, preLayer: 90, layer: 110 },
-              sellingPrices: { egg: 1.5, tray: 45, fertilizedEgg: 3.5, chick: 7.0, culledHen: 40, maleBroiler: 30, manure: 15 },
+              sellingPrices: { egg: 2.0, tray: 60, fertilizedEgg: 3.5, chick: 7.0, culledHen: 40, maleBroiler: 30, manure: 15 },
               marketReadyHenPrice: 75,
               targetRates: { fertility: 85, hatch: 80, production: 75, maxMortality: 5 },
               housingDensity: 6,
@@ -121,7 +121,7 @@ export async function GET(request: Request) {
             data: [
               {
                 category: 'equipment',
-                name: 'فقاسة بيض أوتوماتيكية سعة 100+ بيضة',
+                name: 'فقاسة بيض أوتوماتيكية سعة 605+ بيضة',
                 quantity: 1,
                 unitValue: 4100,
                 totalValue: 4100,
@@ -189,7 +189,7 @@ export async function GET(request: Request) {
             prisma.valuationItem.findMany(),
           ]);
           const settings = (settingsRow as unknown as Settings) || {
-            incubatorCapacity: 100,
+            incubatorCapacity: 605,
             feedPrices: { starter: 5.5, grower: 5.0, preLayer: 5.0, layer: 5.0 },
             dailyFeedConsumption: { starter: 25, grower: 65, preLayer: 90, layer: 110 },
             sellingPrices: { egg: 2.0, tray: 60, fertilizedEgg: 3.5, chick: 7.0, culledHen: 40, maleBroiler: 30, manure: 15 },
@@ -201,10 +201,17 @@ export async function GET(request: Request) {
             currency: 'MAD',
             currencySymbol: 'د.م',
           };
-          const layerGroup = flocks.find(f => f.category === 'layers');
-          const roosterGroup = flocks.find(f => f.category === 'roosters');
-          const currentLayingHens = layerGroup?.femalesCount ?? prods[0]?.activeHenCount ?? 10;
-          const currentRoosters = roosterGroup?.malesCount ?? 5;
+          const layerGroups = flocks.filter(f => f.category === 'layers');
+          const roosterGroups = flocks.filter(f => f.category === 'roosters');
+          const currentLayingHens =
+            layerGroups.length > 0
+              ? layerGroups.reduce((s, f) => s + (f.femalesCount || 0), 0)
+              : prods[0]?.activeHenCount ?? 10;
+          const currentRoosters =
+            roosterGroups.length > 0 || layerGroups.length > 0
+              ? roosterGroups.reduce((s, f) => s + (f.malesCount || 0), 0) +
+                layerGroups.reduce((s, f) => s + (f.malesCount || 0), 0)
+              : 5;
           const pendingPulletsHens = rears.reduce((s, r) => {
             const healthy = r.currentHealthyCount ?? Math.max(0, r.initialChickCount - (r.mortalityCount || 0));
             return s + Math.max(0, healthy - (r.malesCount || 0));
@@ -213,7 +220,7 @@ export async function GET(request: Request) {
           const incubatingEggsCount = incs.reduce((s, b) => s + b.eggCount, 0);
 
           // اكتشاف سعة الفقاسة من الأصول إذا كانت مذكورة (مثلاً 605)
-          let detectedCap = settings.incubatorCapacity || 100;
+          let detectedCap = settings.incubatorCapacity || 605;
           const incAsset = vals.find(v => v.category === 'equipment' && v.name.includes('فقاسة'));
           if (incAsset) {
             const match = incAsset.name.match(/(\d+)/);
@@ -234,6 +241,7 @@ export async function GET(request: Request) {
                 return {
                   batchCode: r.batchCode || `R-${r.id}`,
                   startDate: typeof r.startDate === 'string' ? r.startDate : new Date(r.startDate).toISOString().split('T')[0],
+                  currentAgeWeeks: r.currentAgeWeeks ?? undefined,
                   femalesCount: Math.max(0, healthy - (r.malesCount || 0)),
                   malesCount: r.malesCount || 0,
                 };
@@ -242,6 +250,7 @@ export async function GET(request: Request) {
                 batchCode: b.batchCode || `INC-${b.id}`,
                 startDate: typeof b.startDate === 'string' ? b.startDate : new Date(b.startDate).toISOString().split('T')[0],
                 eggCount: b.eggCount,
+                fertilizedCount: b.fertilizedCount ?? undefined,
               })),
               today: new Date().toISOString().split('T')[0],
             },
@@ -254,7 +263,7 @@ export async function GET(request: Request) {
               durationMonths: 12,
               targetMonthlyProfit: 5000,
               strategy: 'incubator',
-              description: `خطة مبنية على معطيات المزرعة (${currentLayingHens} دجاجة بياضة + ${pendingPulletsHens} عتوكة ATK-2611 + ${incubatingEggsCount} بيضة في الفقاسة بسعر ${settings.sellingPrices.egg} د.م/بيضة)`,
+              description: `خطة مبنية على معطيات المزرعة (${currentLayingHens} دجاجة بياضة + ${currentRoosters} ديوك + ${pendingPulletsHens + pendingPulletsMales} عتوكة ATK-2611 + ${incubatingEggsCount} بيضة في الفقاسة سعة ${detectedCap} بسعر ${settings.sellingPrices.egg} د.م/بيضة)`,
               startDate: new Date().toISOString().split('T')[0],
               months: {
                 create: summary.months.map(m => ({
