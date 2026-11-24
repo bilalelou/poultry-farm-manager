@@ -11,6 +11,8 @@ import {
   type FarmBaseline,
   type CalculatedMonthRow,
   type ExpansionSummary,
+  type PendingRearingBatch,
+  type ActiveIncubatorBatch,
 } from '@/lib/expansion-calculator';
 import { formatCurrency, formatNumber, todayISO, cn } from '@/lib/utils';
 import {
@@ -106,6 +108,25 @@ export default function ExpansionPage() {
         if (match && Number(match[1]) > detectedCap) detectedCap = Number(match[1]);
       }
 
+      // بناء بيانات التوقيت الحقيقية لدفعات التربية والفقاسة
+      const rearingBatchesData: PendingRearingBatch[] = activeRearing.map(r => {
+        const healthy = r.currentHealthyCount ?? Math.max(0, r.initialChickCount - (r.mortalityCount || 0));
+        return {
+          batchCode: r.batchCode || `R-${r.id}`,
+          startDate: r.startDate,
+          femalesCount: Math.max(0, healthy - (r.malesCount || 0)),
+          malesCount: r.malesCount || 0,
+        };
+      });
+
+      const incubatorBatchesData: ActiveIncubatorBatch[] = incs
+        .filter(b => b.status === 'incubating')
+        .map(b => ({
+          batchCode: b.batchCode || `INC-${b.id}`,
+          startDate: b.startDate,
+          eggCount: b.eggCount,
+        }));
+
       const farmBase: FarmBaseline = {
         settings: s,
         currentLayingHens,
@@ -114,6 +135,9 @@ export default function ExpansionPage() {
         pendingPulletsMales,
         incubatingEggsCount,
         incubatorCapacity: detectedCap,
+        rearingBatches: rearingBatchesData,
+        incubatorBatches: incubatorBatchesData,
+        today: new Date().toISOString().split('T')[0],
       };
       setBaseline(farmBase);
       setSavedPlans(plans);

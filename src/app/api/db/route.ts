@@ -229,6 +229,21 @@ export async function GET(request: Request) {
               pendingPulletsMales,
               incubatingEggsCount,
               incubatorCapacity: detectedCap,
+              rearingBatches: rears.map(r => {
+                const healthy = r.currentHealthyCount ?? Math.max(0, r.initialChickCount - (r.mortalityCount || 0));
+                return {
+                  batchCode: r.batchCode || `R-${r.id}`,
+                  startDate: typeof r.startDate === 'string' ? r.startDate : new Date(r.startDate).toISOString().split('T')[0],
+                  femalesCount: Math.max(0, healthy - (r.malesCount || 0)),
+                  malesCount: r.malesCount || 0,
+                };
+              }),
+              incubatorBatches: incs.map(b => ({
+                batchCode: b.batchCode || `INC-${b.id}`,
+                startDate: typeof b.startDate === 'string' ? b.startDate : new Date(b.startDate).toISOString().split('T')[0],
+                eggCount: b.eggCount,
+              })),
+              today: new Date().toISOString().split('T')[0],
             },
             { targetMonthlyProfit: 5000, durationMonths: 12, strategy: 'incubator' }
           );
