@@ -59,6 +59,54 @@ export async function GET(request: Request) {
         const items = await prisma.expense.findMany({ orderBy: { date: 'desc' } });
         return NextResponse.json(items);
       }
+      case 'flockGroups': {
+        let items = await prisma.flockGroup.findMany({ orderBy: { createdAt: 'desc' } });
+        // إذا كان فارغاً أول مرة، نملؤه بالمجموعات الحقيقية للمزرعة
+        if (items.length === 0) {
+          await prisma.flockGroup.createMany({
+            data: [
+              {
+                name: 'القطيع البياض النشط',
+                category: 'layers',
+                breed: 'دجاج بلدي أصيل',
+                headCount: 10,
+                malesCount: 0,
+                femalesCount: 10,
+                ageWeeks: 28,
+                housing: 'عنبر 1 - البياضات',
+                healthStatus: 'ممتازة',
+                notes: '10 دجاجات بياضة منتجة حالياً لمعدل 7-8 بيضات يومياً',
+              },
+              {
+                name: 'عتوكة الاستبدال (قيد التجهيز)',
+                category: 'pullets',
+                breed: 'بلدي خليط',
+                headCount: 22,
+                malesCount: 2,
+                femalesCount: 20,
+                ageWeeks: 5,
+                housing: 'عنبر 2 - العتوكة',
+                healthStatus: 'ممتازة',
+                notes: 'دفعة ATK-2611 (20 إناث بياضة و 2 ديوك)',
+              },
+              {
+                name: 'ديوك التخصيب الرئيسية',
+                category: 'roosters',
+                breed: 'بلدي مميز',
+                headCount: 2,
+                malesCount: 2,
+                femalesCount: 0,
+                ageWeeks: 32,
+                housing: 'عنبر 1 - قسم الذكور',
+                healthStatus: 'ممتازة',
+                notes: 'مخصصة لتخصيب البيض لدفعة الفقاسة',
+              },
+            ],
+          });
+          items = await prisma.flockGroup.findMany({ orderBy: { createdAt: 'desc' } });
+        }
+        return NextResponse.json(items);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
@@ -111,6 +159,10 @@ export async function POST(request: Request) {
         const item = await prisma.expense.create({ data: body });
         return NextResponse.json(item);
       }
+      case 'flockGroups': {
+        const item = await prisma.flockGroup.create({ data: body });
+        return NextResponse.json(item);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
@@ -151,6 +203,10 @@ export async function PUT(request: Request) {
         const updated = await prisma.expense.update({ where: { id }, data: body });
         return NextResponse.json(updated);
       }
+      case 'flockGroups': {
+        const updated = await prisma.flockGroup.update({ where: { id }, data: body });
+        return NextResponse.json(updated);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
@@ -189,6 +245,10 @@ export async function DELETE(request: Request) {
       }
       case 'expenses': {
         await prisma.expense.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'flockGroups': {
+        await prisma.flockGroup.delete({ where: { id } });
         return NextResponse.json({ success: true });
       }
       default:

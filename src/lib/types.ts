@@ -179,7 +179,32 @@ export interface Expense {
   notes?: string;
 }
 
-// === خطة التوسع ===
+// === مجموعات القطيع العام ===
+export type FlockCategory = 'layers' | 'roosters' | 'pullets' | 'chicks' | 'broilers';
+
+export interface FlockGroup {
+  id?: number;
+  name: string;
+  category: FlockCategory;
+  breed: string;
+  headCount: number;
+  malesCount: number;
+  femalesCount: number;
+  ageWeeks: number;
+  housing?: string;
+  healthStatus: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export const FLOCK_CATEGORY_LABELS: Record<FlockCategory, string> = {
+  layers: 'دجاج بياض منتج',
+  roosters: 'ديوك التخصيب / التلقيح',
+  pullets: 'عتوكة (ما قبل البيض)',
+  chicks: 'كتاكيت وحضانة',
+  broilers: 'تسمين / لحم',
+};
 export type ExpansionSource = 'incubator' | 'purchased';
 
 export interface ExpansionPlanMonth {

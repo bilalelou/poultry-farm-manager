@@ -166,3 +166,19 @@ model Alert {
   isRead         Boolean  @default(false)
   createdAt      DateTime @default(now())
 }
+
+model FlockGroup {
+  id          Int      @id @default(autoincrement())
+  name        String   // اسم المجموعة / الحظيرة، مثلا: القطيع البياض الرئيسي، حظيرة الديوك، كتاكيت التربية
+  category    String   // layers (بياض) | roosters (ديوك) | pullets (عتوكة) | chicks (كتاكيت) | broilers (تسمين)
+  breed       String   @default("بلدي / خليط") // السلالة
+  headCount   Int      // العدد الحالي
+  malesCount  Int      @default(0) // عدد الذكور
+  femalesCount Int     @default(0) // عدد الإناث
+  ageWeeks    Int      @default(20) // العمر بالأسابيع
+  housing     String?  // رقم أو اسم العنبر / الحظيرة
+  healthStatus String  @default("ممتازة") // ممتازة، جيدة، تحت العلاج
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
