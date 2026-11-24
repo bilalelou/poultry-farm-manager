@@ -54,6 +54,7 @@ model RearingBatch {
   initialCostPerChick Float
   currentHealthyCount Int?
   mortalityCount      Int?                @default(0)
+  malesCount          Int?                @default(0)
   currentAgeWeeks     Int?                @default(1)
   status              String              @default("rearing") // rearing | completed | transferred
   notes               String?

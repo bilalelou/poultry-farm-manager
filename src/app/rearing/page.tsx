@@ -28,8 +28,9 @@ export default function RearingListPage() {
     startDate: todayISO(),
     initialChickCount: 36,
     initialCostPerChick: 40,
-    currentHealthyCount: 18,
+    currentHealthyCount: 22,
     mortalityCount: 14,
+    malesCount: 2,
     currentAgeWeeks: 5,
     status: 'rearing' as RearingStatus,
     notes: '',
@@ -63,6 +64,7 @@ export default function RearingListPage() {
       initialCostPerChick: 35,
       currentHealthyCount: 30,
       mortalityCount: 0,
+      malesCount: 0,
       currentAgeWeeks: 1,
       status: 'rearing',
       notes: '',
@@ -85,6 +87,7 @@ export default function RearingListPage() {
       initialCostPerChick: batch.initialCostPerChick,
       currentHealthyCount: healthy,
       mortalityCount: mortality,
+      malesCount: batch.malesCount ?? 0,
       currentAgeWeeks: age,
       status: batch.status,
       notes: batch.notes || '',
@@ -126,6 +129,7 @@ export default function RearingListPage() {
       initialCostPerChick: Number(form.initialCostPerChick),
       currentHealthyCount: Number(form.currentHealthyCount),
       mortalityCount: Number(form.mortalityCount),
+      malesCount: Number(form.malesCount),
       currentAgeWeeks: Number(form.currentAgeWeeks),
       status: form.status,
       notes: form.notes,
@@ -149,21 +153,23 @@ export default function RearingListPage() {
     const initial = batch.initialChickCount || 0;
     const mortality = batch.mortalityCount ?? 0;
     const healthyCount = batch.currentHealthyCount ?? Math.max(0, initial - mortality);
+    const males = batch.malesCount ?? 0;
+    const femalesCount = Math.max(0, healthyCount - males);
 
     // 1. تحديث حالة الدفعة
     await db.rearingBatches.update(batch.id, { status: 'transferred' });
 
-    // 2. تحديث قطيع الإنتاج في PostgreSQL
+    // 2. تحديث قطيع الإنتاج في PostgreSQL بإناث البيض
     const prods = await db.dailyProduction.orderBy('date').reverse().toArray();
     const currentActive = prods.length > 0 ? (prods[0].activeHenCount - prods[0].dailyMortality) : 10;
-    const newTotal = currentActive + healthyCount;
+    const newTotal = currentActive + femalesCount;
     const today = todayISO();
     const existingToday = prods.find(p => p.date === today);
 
     if (existingToday && existingToday.id) {
       await db.dailyProduction.update(existingToday.id, {
-        activeHenCount: existingToday.activeHenCount + healthyCount,
-        notes: (existingToday.notes ? existingToday.notes + ' | ' : '') + `انضمام ${healthyCount} دجاجة من ${batch.batchCode}`,
+        activeHenCount: existingToday.activeHenCount + femalesCount,
+        notes: (existingToday.notes ? existingToday.notes + ' | ' : '') + `انضمام ${femalesCount} إناث بياضة من ${batch.batchCode} (${males} ذكور تم عزلها)`,
       });
     } else {
       await db.dailyProduction.add({
@@ -176,7 +182,7 @@ export default function RearingListPage() {
         personalUse: 0,
         netSaleableEggs: 0,
         productionRate: 0,
-        notes: `انضمام ${healthyCount} دجاجة سليمة من الدفعة ${batch.batchCode} إلى قطيع الإنتاج (المجموع: ${newTotal} دجاجة)`,
+        notes: `انضمام ${femalesCount} إناث بياضة من الدفعة ${batch.batchCode} إلى قطيع الإنتاج (المجموع: ${newTotal} دجاجة بياضة)`,
       });
     }
 
@@ -272,8 +278,20 @@ export default function RearingListPage() {
                           <span className="font-bold">{batch.mortalityCount ?? 0} طير</span>
                         </div>
                         <div className="flex justify-between bg-emerald-50 text-emerald-800 p-2 rounded-lg font-bold border border-emerald-200">
-                          <span>✨ العدد السليم (المتبقي)</span>
+                          <span>✨ إجمالي السليم (المتبقي)</span>
                           <span className="text-base">{batch.currentHealthyCount ?? (batch.initialChickCount - (batch.mortalityCount ?? 0))} طير</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2 rounded-lg border border-slate-200">
+                          <div className="flex justify-between text-blue-700">
+                            <span>🐓 ذكور / ديوك:</span>
+                            <span className="font-bold">{batch.malesCount ?? 0}</span>
+                          </div>
+                          <div className="flex justify-between text-pink-700">
+                            <span>🐔 إناث (بياض):</span>
+                            <span className="font-bold">
+                              {Math.max(0, (batch.currentHealthyCount ?? (batch.initialChickCount - (batch.mortalityCount ?? 0))) - (batch.malesCount ?? 0))}
+                            </span>
+                          </div>
                         </div>
                         <div className="flex justify-between"><span>💰 تكلفة الطير الأولية</span><span className="font-medium">{batch.initialCostPerChick} د.م</span></div>
                         {batch.notes && <p className="text-xs text-slate-400 mt-2 line-clamp-1">{batch.notes}</p>}
@@ -357,12 +375,25 @@ export default function RearingListPage() {
           </div>
           <div className="grid grid-cols-2 gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
             <div>
-              <label className="block text-sm font-medium text-red-600 mb-1">💀 عدد النفوق (الميت / التالف)</label>
+              <label className="block text-sm font-medium text-red-600 mb-1">💀 عدد النفوق (الميت)</label>
               <input type="number" min="0" value={form.mortalityCount} onChange={e => handleMortalityChange(+e.target.value)} className="w-full px-3 py-2 border border-red-300 rounded-lg text-sm bg-white font-bold text-red-600" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-emerald-700 mb-1">✨ العدد السليم (المتبقي حالياً)</label>
+              <label className="block text-sm font-medium text-emerald-700 mb-1">✨ إجمالي السليم المتبقي</label>
               <input type="number" min="0" value={form.currentHealthyCount} onChange={e => handleHealthyChange(+e.target.value)} className="w-full px-3 py-2 border border-emerald-300 rounded-lg text-sm bg-emerald-50 font-bold text-emerald-700" />
+            </div>
+            <div className="col-span-2 pt-2 border-t border-slate-200 grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-blue-700 mb-1">🐓 عدد الذكور / الديوك</label>
+                <input type="number" min="0" max={form.currentHealthyCount} value={form.malesCount} onChange={e => setForm(p => ({ ...p, malesCount: +e.target.value }))} className="w-full px-3 py-1.5 border border-blue-300 rounded-lg text-sm bg-blue-50/50 font-bold text-blue-800" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-pink-700 mb-1">🐔 إناث متبقية للبيض (محسوبة)</label>
+                <div className="w-full px-3 py-1.5 border border-pink-200 rounded-lg text-sm bg-pink-50 font-black text-pink-700 flex items-center justify-between">
+                  <span>إناث:</span>
+                  <span>{Math.max(0, form.currentHealthyCount - form.malesCount)}</span>
+                </div>
+              </div>
             </div>
           </div>
           <div>

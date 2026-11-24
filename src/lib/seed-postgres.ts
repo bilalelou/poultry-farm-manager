@@ -38,17 +38,19 @@ export async function seedPostgres() {
     },
   });
 
-  // 3. Rearing Batch ATK-2611 (العتوكة: 36 ابتدائية، 14 نفوق، 18 سليم متبقي)
+  // 3. Rearing Batch ATK-2611 (العتوكة: 36 ابتدائية، 14 نفوق، 22 سليم متبقي)
   await prisma.rearingBatch.create({
     data: {
       batchCode: 'ATK-2611',
       startDate: '2026-10-20',
       initialChickCount: 36,
       initialCostPerChick: 40,
-      currentHealthyCount: 18,
+      currentHealthyCount: 22,
       mortalityCount: 14,
+      malesCount: 2,
+      currentAgeWeeks: 5,
       status: 'rearing',
-      notes: 'شراء 36 عتوكة بـ 40 درهم للحبة، نفق منها 14 وتبقى 18 حبة سليمة ستدخل الإنتاج قريباً',
+      notes: 'شراء 36 عتوكة بـ 40 درهم للحبة، نفق منها 14 وتبقى 22 حبة سليمة (منها ذكور/ديوك) ستدخل الإنتاج قريباً',
     },
   });
 
