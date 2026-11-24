@@ -11,7 +11,7 @@ export default function HomePage() {
   useEffect(() => {
     async function init() {
       try {
-        await seedDatabase();
+        await seedDatabase(true);
       } catch (err) {
         console.error('Seed error:', err);
       }

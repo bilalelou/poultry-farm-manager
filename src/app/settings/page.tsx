@@ -5,7 +5,8 @@ import AppShell from '@/components/AppShell';
 import { Card, LoadingSpinner, ConfirmDialog } from '@/components/ui';
 import { db, getSettings, updateSettings, DEFAULT_SETTINGS } from '@/lib/db';
 import type { Settings } from '@/lib/types';
-import { Settings as SettingsIcon, Download, Upload, RotateCcw, Check } from 'lucide-react';
+import { Settings as SettingsIcon, Download, Upload, RotateCcw, Check, RefreshCw } from 'lucide-react';
+import { seedDatabase } from '@/lib/seed';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
@@ -31,6 +32,17 @@ export default function SettingsPage() {
       setSettings({ ...DEFAULT_SETTINGS, id: settings.id });
     }
     setShowReset(false);
+  }
+
+  async function loadRealData() {
+    await seedDatabase(true);
+    const s = await getSettings();
+    setSettings(s);
+    setImportStatus('✅ تم تصفير البيانات وتحميل بيانات مشروعك الحقيقية بنجاح!');
+    setTimeout(() => {
+      setImportStatus('');
+      window.location.href = '/dashboard';
+    }, 1500);
   }
 
   async function exportBackup() {
@@ -214,6 +226,10 @@ export default function SettingsPage() {
         <Card className="p-5">
           <h3 className="font-bold text-slate-800 mb-4">📦 إدارة البيانات</h3>
           <div className="flex flex-wrap gap-3">
+            <button onClick={loadRealData} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition">
+              <RefreshCw className="w-5 h-5" />
+              تطبيق بيانات المزرعة الحقيقية
+            </button>
             <button onClick={exportBackup} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-medium hover:bg-emerald-700 transition">
               <Download className="w-5 h-5" />
               تصدير نسخة احتياطية (JSON)
