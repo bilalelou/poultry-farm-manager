@@ -19,9 +19,15 @@ export default function RearingListPage() {
 
   useEffect(() => {
     (async () => {
-      const b = await db.rearingBatches.orderBy('startDate').reverse().toArray();
-      setBatches(b);
-      setLoading(false);
+      try {
+        const b = await db.rearingBatches.toArray();
+        b.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
+        setBatches(b);
+      } catch (err) {
+        console.error('Error loading rearing batches:', err);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 

@@ -31,10 +31,10 @@ class PoultryFarmDB extends Dexie {
   constructor() {
     super('PoultryFarmDB');
 
-    this.version(1).stores({
+    this.version(2).stores({
       settings: '++id',
       incubatorBatches: '++id, batchCode, startDate, status',
-      rearingBatches: '++id, batchCode, incubatorBatchId, status',
+      rearingBatches: '++id, batchCode, startDate, incubatorBatchId, status',
       rearingWeeklyLogs: '++id, rearingBatchId, weekNumber',
       dailyProduction: '++id, date',
       sales: '++id, date, type',
