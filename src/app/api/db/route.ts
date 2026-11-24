@@ -157,6 +157,14 @@ export async function GET(request: Request) {
                 totalValue: 650,
                 notes: 'تجهيزات العنابر والحظائر',
               },
+              {
+                category: 'cash',
+                name: 'مخزون بيض مخصب قيد التحضين بالفقاسة (71 بيضة)',
+                quantity: 71,
+                unitValue: 3.5,
+                totalValue: 248.5,
+                notes: 'دفعة F2611-01 (63 شراء خارجي بسعر 3.5 د.م + 8 من المزرعة)',
+              },
             ],
           });
           items = await prisma.valuationItem.findMany({ orderBy: { id: 'asc' } });
