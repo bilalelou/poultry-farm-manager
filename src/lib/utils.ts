@@ -7,22 +7,25 @@ import type { FeedPhase } from './types';
 /**
  * تنسيق العملة
  */
-export function formatCurrency(amount: number, symbol: string = 'د.م'): string {
-  return `${amount.toLocaleString('ar-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${symbol}`;
+export function formatCurrency(amount: number | null | undefined, symbol: string = 'د.م'): string {
+  const val = typeof amount === 'number' && !isNaN(amount) ? amount : 0;
+  return `${val.toLocaleString('ar-MA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${symbol}`;
 }
 
 /**
  * تنسيق النسبة المئوية
  */
-export function formatPercent(value: number): string {
+export function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || isNaN(value)) return '0.0%';
   return `${value.toFixed(1)}%`;
 }
 
 /**
  * تنسيق الأرقام
  */
-export function formatNumber(value: number): string {
-  return value.toLocaleString('ar-MA');
+export function formatNumber(value: number | null | undefined): string {
+  const val = typeof value === 'number' && !isNaN(value) ? value : 0;
+  return val.toLocaleString('ar-MA');
 }
 
 /**

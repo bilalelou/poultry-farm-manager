@@ -228,19 +228,19 @@ export default function IncubatorPage() {
                           <span>💰 تكلفة البيض</span>
                           <span className="font-medium">{formatCurrency(batch.eggCost || 0, sym)}</span>
                         </div>
-                        {batch.fertilizedCount !== undefined && (
+                        {batch.fertilizedCount !== undefined && batch.fertilizedCount !== null && (
                           <div className="flex justify-between text-slate-600">
                             <span>🔬 نسبة الإخصاب</span>
-                            <span className="font-medium text-blue-600">{batch.fertilizedCount} ({formatPercent(batch.fertilityRate || 0)})</span>
+                            <span className="font-medium text-blue-600">{batch.fertilizedCount} ({formatPercent(batch.fertilityRate ?? 0)})</span>
                           </div>
                         )}
-                        {batch.hatchRate !== undefined && (
+                        {batch.hatchRate !== undefined && batch.hatchRate !== null && (
                           <div className="flex justify-between text-slate-600">
                             <span>🐣 نسبة الفقس</span>
                             <span className="font-medium text-emerald-600">{formatPercent(batch.hatchRate)}</span>
                           </div>
                         )}
-                        {batch.hatchedChicks !== undefined && (
+                        {batch.hatchedChicks !== undefined && batch.hatchedChicks !== null && (
                           <div className="flex justify-between text-slate-600">
                             <span>🐥 الكتاكيت</span>
                             <span className="font-bold text-emerald-700">{batch.hatchedChicks}</span>
