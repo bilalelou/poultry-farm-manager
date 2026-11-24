@@ -8,7 +8,7 @@ import { db } from '@/lib/db';
 import type { RearingBatch, RearingStatus } from '@/lib/types';
 import { REARING_STATUS_LABELS } from '@/lib/types';
 import { formatDate, getRearingWeek, getFeedPhase, getFeedPhaseName, generateBatchCode, todayISO, cn } from '@/lib/utils';
-import { TrendingUp, Bird, Plus, Edit2, Trash2 } from 'lucide-react';
+import { TrendingUp, Bird, Plus, Edit2, Trash2, Truck } from 'lucide-react';
 
 const statusColors = { rearing: 'amber' as const, completed: 'green' as const, transferred: 'blue' as const };
 
@@ -34,6 +34,9 @@ export default function RearingListPage() {
     status: 'rearing' as RearingStatus,
     notes: '',
   });
+
+  // Transfer Modal state
+  const [transferBatch, setTransferBatch] = useState<RearingBatch | null>(null);
 
   useEffect(() => {
     loadData();
@@ -140,6 +143,47 @@ export default function RearingListPage() {
     loadData();
   }
 
+  async function confirmTransfer() {
+    if (!transferBatch || !transferBatch.id) return;
+    const batch = transferBatch;
+    const initial = batch.initialChickCount || 0;
+    const mortality = batch.mortalityCount ?? 0;
+    const healthyCount = batch.currentHealthyCount ?? Math.max(0, initial - mortality);
+
+    // 1. تحديث حالة الدفعة
+    await db.rearingBatches.update(batch.id, { status: 'transferred' });
+
+    // 2. تحديث قطيع الإنتاج في PostgreSQL
+    const prods = await db.dailyProduction.orderBy('date').reverse().toArray();
+    const currentActive = prods.length > 0 ? (prods[0].activeHenCount - prods[0].dailyMortality) : 10;
+    const newTotal = currentActive + healthyCount;
+    const today = todayISO();
+    const existingToday = prods.find(p => p.date === today);
+
+    if (existingToday && existingToday.id) {
+      await db.dailyProduction.update(existingToday.id, {
+        activeHenCount: existingToday.activeHenCount + healthyCount,
+        notes: (existingToday.notes ? existingToday.notes + ' | ' : '') + `انضمام ${healthyCount} دجاجة من ${batch.batchCode}`,
+      });
+    } else {
+      await db.dailyProduction.add({
+        date: today,
+        activeHenCount: newTotal,
+        dailyMortality: 0,
+        totalEggsCollected: 0,
+        brokenEggs: 0,
+        incubatorEggs: 0,
+        personalUse: 0,
+        netSaleableEggs: 0,
+        productionRate: 0,
+        notes: `انضمام ${healthyCount} دجاجة سليمة من الدفعة ${batch.batchCode} إلى قطيع الإنتاج (المجموع: ${newTotal} دجاجة)`,
+      });
+    }
+
+    setTransferBatch(null);
+    loadData();
+  }
+
   function promptDelete(batchId: number, e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -238,7 +282,27 @@ export default function RearingListPage() {
 
                     {/* Footer Actions */}
                     <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-xs text-blue-600 font-medium">عرض سجل الأسابيع ←</span>
+                      {batch.status === 'transferred' ? (
+                        <span className="text-xs text-slate-400 font-medium">✓ تم الانضمام للإنتاج</span>
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setTransferBatch(batch);
+                          }}
+                          className={cn(
+                            "flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-bold transition",
+                            (batch.currentAgeWeeks || week) >= 20 || batch.status === 'completed'
+                              ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm animate-pulse"
+                              : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
+                          )}
+                          title="نقل الدجاج السليم إلى قطيع الإنتاج"
+                        >
+                          <Truck className="w-3.5 h-3.5" />
+                          نقل للإنتاج (+{batch.currentHealthyCount ?? (batch.initialChickCount - (batch.mortalityCount ?? 0))})
+                        </button>
+                      )}
                       <div className="flex items-center gap-1">
                         <button
                           onClick={(e) => openEditModal(batch, e)}
@@ -333,6 +397,21 @@ export default function RearingListPage() {
         message="هل أنت متأكد من حذف هذه الدفعة وسجلاتها الأسبوعية المرتبطة بها؟"
         confirmLabel="حذف نهائي"
         confirmColor="red"
+      />
+
+      {/* Transfer to Production Confirmation */}
+      <ConfirmDialog
+        isOpen={transferBatch !== null}
+        onClose={() => setTransferBatch(null)}
+        onConfirm={confirmTransfer}
+        title="نقل الدجاج السليم إلى قطيع الإنتاج"
+        message={
+          transferBatch
+            ? `سيتم نقل ${transferBatch.currentHealthyCount ?? (transferBatch.initialChickCount - (transferBatch.mortalityCount ?? 0))} دجاجة سليمة من الدفعة (${transferBatch.batchCode}) وإضافتها مباشرة إلى قطيع الإنتاج الحالي في صفحة الإنتاج والمبيعات. هل تريد المتابعة؟`
+            : ''
+        }
+        confirmLabel="تأكيد النقل للإنتاج 🚚"
+        confirmColor="blue"
       />
     </AppShell>
   );

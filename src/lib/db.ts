@@ -64,7 +64,8 @@ function createTableHandler<T extends { id?: number }>(resource: string, localTa
       }
       return localTable.bulkAdd ? localTable.bulkAdd(dataArr).catch(() => {}) : undefined;
     },
-    update: async (id: number, data: any): Promise<any> => {
+    update: async (id: number | undefined, data: any): Promise<any> => {
+      if (id === undefined) return;
       try {
         return await fetchApi(`${resource}&id=${id}`, {
           method: 'PUT',

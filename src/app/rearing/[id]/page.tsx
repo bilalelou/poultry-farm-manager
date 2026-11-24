@@ -7,7 +7,7 @@ import { Card, Badge, Modal, LoadingSpinner, ConfirmDialog } from '@/components/
 import { db, getSettings } from '@/lib/db';
 import type { RearingBatch, RearingWeeklyLog, Settings } from '@/lib/types';
 import { DEFAULT_VACCINATION_SCHEDULE } from '@/lib/types';
-import { formatCurrency, formatPercent, formatDate, getFeedPhase, getFeedPhaseName, getRearingWeek, cn } from '@/lib/utils';
+import { formatCurrency, formatPercent, formatDate, getFeedPhase, getFeedPhaseName, getRearingWeek, todayISO, cn } from '@/lib/utils';
 import { ArrowRight, Plus, Syringe, Truck, DollarSign } from 'lucide-react';
 
 export default function RearingDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -84,7 +84,39 @@ export default function RearingDetailPage({ params }: { params: Promise<{ id: st
 
   async function transferToProduction() {
     if (!batch?.id) return;
+    
+    // 1. تحديث حالة دفعة التربية إلى تم النقل
     await db.rearingBatches.update(batch.id, { status: 'transferred' });
+
+    // 2. جلب آخر سجل إنتاج للحصول على عدد الدجاج الحالي وإضافة العدد السليم إليه
+    const prods = await db.dailyProduction.orderBy('date').reverse().toArray();
+    const currentActiveHens = prods.length > 0 ? (prods[0].activeHenCount - prods[0].dailyMortality) : 10;
+    const newActiveHens = currentActiveHens + finalRemaining;
+
+    // 3. إضافة سجل إنتاج جديد بتاريخ اليوم بهذا العدد الجديد للقطيع البياض
+    const today = todayISO();
+    const existingToday = prods.find(p => p.date === today);
+
+    if (existingToday && existingToday.id) {
+      await db.dailyProduction.update(existingToday.id, {
+        activeHenCount: existingToday.activeHenCount + finalRemaining,
+        notes: (existingToday.notes ? existingToday.notes + ' | ' : '') + `تم انضمام ${finalRemaining} دجاجة من الدفعة ${batch.batchCode}`,
+      });
+    } else {
+      await db.dailyProduction.add({
+        date: today,
+        activeHenCount: newActiveHens,
+        dailyMortality: 0,
+        totalEggsCollected: 0,
+        brokenEggs: 0,
+        incubatorEggs: 0,
+        personalUse: 0,
+        netSaleableEggs: 0,
+        productionRate: 0,
+        notes: `انضمام ${finalRemaining} دجاجة سليمة من الدفعة ${batch.batchCode} إلى قطيع الإنتاج (المجموع: ${newActiveHens} دجاجة)`,
+      });
+    }
+
     setShowTransfer(false);
     router.push('/production');
   }
