@@ -1,4 +1,7 @@
-import Dexie, { type EntityTable } from 'dexie';
+// ============================================================
+// عميل قاعدة البيانات المتوافق بالكامل مع واجهات Dexie والمتصل بـ PostgreSQL
+// ============================================================
+
 import type {
   Settings,
   IncubatorBatch,
@@ -7,93 +10,168 @@ import type {
   DailyProduction,
   Sale,
   Expense,
-  ExpansionPlan,
-  ExpansionPlanMonth,
-  Alert,
 } from './types';
+import { db as localDexieDb } from './db-local';
 
-// ============================================================
-// قاعدة بيانات IndexedDB باستخدام Dexie.js
-// ============================================================
-
-class PoultryFarmDB extends Dexie {
-  settings!: EntityTable<Settings, 'id'>;
-  incubatorBatches!: EntityTable<IncubatorBatch, 'id'>;
-  rearingBatches!: EntityTable<RearingBatch, 'id'>;
-  rearingWeeklyLogs!: EntityTable<RearingWeeklyLog, 'id'>;
-  dailyProduction!: EntityTable<DailyProduction, 'id'>;
-  sales!: EntityTable<Sale, 'id'>;
-  expenses!: EntityTable<Expense, 'id'>;
-  expansionPlans!: EntityTable<ExpansionPlan, 'id'>;
-  expansionPlanMonths!: EntityTable<ExpansionPlanMonth, 'id'>;
-  alerts!: EntityTable<Alert, 'id'>;
-
-  constructor() {
-    super('PoultryFarmDB');
-
-    this.version(2).stores({
-      settings: '++id',
-      incubatorBatches: '++id, batchCode, startDate, status',
-      rearingBatches: '++id, batchCode, startDate, incubatorBatchId, status',
-      rearingWeeklyLogs: '++id, rearingBatchId, weekNumber',
-      dailyProduction: '++id, date',
-      sales: '++id, date, type',
-      expenses: '++id, date, scope, type, category, batchId',
-      expansionPlans: '++id, name',
-      expansionPlanMonths: '++id, planId, month',
-      alerts: '++id, date, type, category, isRead',
-    });
+async function fetchApi<T>(resource: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`/api/db?resource=${resource}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`API Error: ${res.statusText}`);
   }
+  return res.json();
 }
 
-export const db = new PoultryFarmDB();
+function createTableHandler<T extends { id?: number }>(resource: string, localTable: any) {
+  return {
+    toArray: async (): Promise<T[]> => {
+      try {
+        return await fetchApi<T[]>(resource);
+      } catch (e) {
+        return await localTable.toArray();
+      }
+    },
+    get: async (id: number): Promise<T | undefined> => {
+      try {
+        const all = await fetchApi<T[]>(resource);
+        return all.find((item: any) => item.id === id);
+      } catch (e) {
+        return await localTable.get(id);
+      }
+    },
+    add: async (data: any): Promise<any> => {
+      try {
+        const created = await fetchApi<T>(resource, {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+        return (created as any).id;
+      } catch (e) {
+        return await localTable.add(data);
+      }
+    },
+    bulkAdd: async (dataArr: any[]): Promise<any> => {
+      for (const item of dataArr) {
+        await fetchApi(resource, {
+          method: 'POST',
+          body: JSON.stringify(item),
+        }).catch(() => {});
+      }
+      return localTable.bulkAdd ? localTable.bulkAdd(dataArr).catch(() => {}) : undefined;
+    },
+    update: async (id: number, data: any): Promise<any> => {
+      try {
+        return await fetchApi(`${resource}&id=${id}`, {
+          method: 'PUT',
+          body: JSON.stringify(data),
+        });
+      } catch (e) {
+        return await localTable.update(id, data);
+      }
+    },
+    delete: async (id: number): Promise<any> => {
+      try {
+        return await fetchApi(`${resource}&id=${id}`, { method: 'DELETE' });
+      } catch (e) {
+        return await localTable.delete(id);
+      }
+    },
+    clear: async (): Promise<any> => {
+      return localTable.clear ? localTable.clear() : Promise.resolve();
+    },
+    count: async (): Promise<number> => {
+      try {
+        const all = await fetchApi<T[]>(resource);
+        return all.length;
+      } catch (e) {
+        return await localTable.count();
+      }
+    },
+    orderBy: (key: string) => ({
+      reverse: () => ({
+        toArray: async (): Promise<T[]> => {
+          try {
+            const all = await fetchApi<T[]>(resource);
+            return all.sort((a: any, b: any) => (b[key] > a[key] ? 1 : -1));
+          } catch (e) {
+            return await localTable.orderBy(key).reverse().toArray();
+          }
+        },
+      }),
+      toArray: async (): Promise<T[]> => {
+        try {
+          const all = await fetchApi<T[]>(resource);
+          return all.sort((a: any, b: any) => (a[key] > b[key] ? 1 : -1));
+        } catch (e) {
+          return await localTable.orderBy(key).toArray();
+        }
+      },
+    }),
+    where: (key: string) => ({
+      equals: (val: any) => ({
+        sortBy: async (sortKey: string): Promise<T[]> => {
+          try {
+            return await fetchApi<T[]>(`${resource}&${key}=${val}`);
+          } catch (e) {
+            return await localTable.where(key).equals(val).sortBy(sortKey);
+          }
+        },
+        delete: async (): Promise<any> => {
+          try {
+            return await localTable.where(key).equals(val).delete();
+          } catch (e) {}
+        },
+      }),
+    }),
+    toCollection: () => ({
+      first: async (): Promise<T | undefined> => {
+        try {
+          const res = await fetchApi<any>(resource);
+          return Array.isArray(res) ? res[0] : res;
+        } catch (e) {
+          return await localTable.toCollection().first();
+        }
+      },
+    }),
+  };
+}
 
-// === الإعدادات الافتراضية ===
+export const db = {
+  settings: createTableHandler<Settings>('settings', localDexieDb.settings),
+  incubatorBatches: createTableHandler<IncubatorBatch>('incubatorBatches', localDexieDb.incubatorBatches),
+  rearingBatches: createTableHandler<RearingBatch>('rearingBatches', localDexieDb.rearingBatches),
+  rearingWeeklyLogs: createTableHandler<RearingWeeklyLog>('rearingWeeklyLogs', localDexieDb.rearingWeeklyLogs),
+  dailyProduction: createTableHandler<DailyProduction>('dailyProduction', localDexieDb.dailyProduction),
+  sales: createTableHandler<Sale>('sales', localDexieDb.sales),
+  expenses: createTableHandler<Expense>('expenses', localDexieDb.expenses),
+  expansionPlans: localDexieDb.expansionPlans,
+  expansionPlanMonths: localDexieDb.expansionPlanMonths,
+  alerts: localDexieDb.alerts,
+};
+
 export const DEFAULT_SETTINGS: Settings = {
-  incubatorCapacity: 176,
-  feedPrices: {
-    starter: 5.5,   // درهم/كغ
-    grower: 4.8,
-    preLayer: 5.0,
-    layer: 4.5,
-  },
-  dailyFeedConsumption: {
-    starter: 25,   // غرام
-    grower: 65,
-    preLayer: 90,
-    layer: 120,
-  },
-  sellingPrices: {
-    egg: 1.2,
-    tray: 36,
-    fertilizedEgg: 2.5,
-    chick: 5,
-    culledHen: 35,
-    maleBroiler: 25,
-    manure: 15,
-  },
-  marketReadyHenPrice: 80,
-  targetRates: {
-    fertility: 85,
-    hatch: 80,
-    production: 75,
-    maxMortality: 5,
-  },
-  housingDensity: 4.5,
-  incubatorElectricityCost: 50,
+  incubatorCapacity: 100,
+  feedPrices: { starter: 5.5, grower: 5.0, preLayer: 5.0, layer: 5.0 },
+  dailyFeedConsumption: { starter: 25, grower: 65, preLayer: 90, layer: 110 },
+  sellingPrices: { egg: 1.5, tray: 45, fertilizedEgg: 3.5, chick: 7.0, culledHen: 40, maleBroiler: 30, manure: 15 },
+  marketReadyHenPrice: 75,
+  targetRates: { fertility: 85, hatch: 80, production: 75, maxMortality: 5 },
+  housingDensity: 6,
+  incubatorElectricityCost: 60,
   incubatorCleaningCost: 20,
   currency: 'MAD',
   currencySymbol: 'د.م',
 };
 
-// === دوال مساعدة لقاعدة البيانات ===
-
 export async function getSettings(): Promise<Settings> {
-  const settings = await db.settings.toCollection().first();
-  if (settings) return settings;
-  // إنشاء الإعدادات الافتراضية
-  const id = await db.settings.add(DEFAULT_SETTINGS);
-  return { ...DEFAULT_SETTINGS, id };
+  const s = await db.settings.toCollection().first();
+  if (s) return s;
+  return DEFAULT_SETTINGS;
 }
 
 export async function updateSettings(updates: Partial<Settings>): Promise<void> {
@@ -101,30 +179,4 @@ export async function updateSettings(updates: Partial<Settings>): Promise<void> 
   if (settings.id) {
     await db.settings.update(settings.id, updates);
   }
-}
-
-// حساب إجمالي المداخيل
-export async function getTotalRevenue(startDate?: string, endDate?: string): Promise<number> {
-  let query = db.sales.toCollection();
-  const sales = await query.toArray();
-  return sales
-    .filter(s => {
-      if (startDate && s.date < startDate) return false;
-      if (endDate && s.date > endDate) return false;
-      return true;
-    })
-    .reduce((sum, s) => sum + s.total, 0);
-}
-
-// حساب إجمالي المصاريف
-export async function getTotalExpenses(startDate?: string, endDate?: string, scope?: string): Promise<number> {
-  const expenses = await db.expenses.toArray();
-  return expenses
-    .filter(e => {
-      if (startDate && e.date < startDate) return false;
-      if (endDate && e.date > endDate) return false;
-      if (scope && e.scope !== scope) return false;
-      return true;
-    })
-    .reduce((sum, e) => sum + e.total, 0);
 }

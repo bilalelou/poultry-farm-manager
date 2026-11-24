@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Settings {
+  id                      Int      @id @default(autoincrement())
+  incubatorCapacity       Int      @default(100)
+  feedPrices              Json     // { starter, grower, preLayer, layer }
+  dailyFeedConsumption    Json     // { starter, grower, preLayer, layer }
+  sellingPrices           Json     // { egg, tray, fertilizedEgg, chick, culledHen, maleBroiler, manure }
+  marketReadyHenPrice     Float    @default(75)
+  targetRates             Json     // { fertility, hatch, production, maxMortality }
+  housingDensity          Float    @default(6)
+  incubatorElectricityCost Float   @default(60)
+  incubatorCleaningCost   Float    @default(20)
+  currency                String   @default("MAD")
+  currencySymbol          String   @default("د.م")
+  updatedAt               DateTime @updatedAt
+}
+
+model IncubatorBatch {
+  id                   Int      @id @default(autoincrement())
+  batchCode            String   @unique
+  startDate            String
+  eggCount             Int
+  eggSource            String   // internal | external
+  eggCost              Float
+  fertilizedCount      Int?
+  fertilityRate        Float?
+  hatchedChicks        Int?
+  spoiledEggs          Int?
+  hatchRate            Float?
+  electricityCost      Float    @default(60)
+  cleaningCost         Float    @default(20)
+  totalCost            Float?
+  costPerChick         Float?
+  status               String   @default("incubating") // incubating | hatched | transferred
+  linkedRearingBatchId Int?
+  notes                String?
+  createdAt            DateTime @default(now())
+}
+
+model RearingBatch {
+  id                  Int                 @id @default(autoincrement())
+  batchCode           String              @unique
+  incubatorBatchId    Int?
+  startDate           String
+  initialChickCount   Int
+  initialCostPerChick Float
+  currentHealthyCount Int?
+  mortalityCount      Int?                @default(0)
+  status              String              @default("rearing") // rearing | completed | transferred
+  notes               String?
+  createdAt           DateTime            @default(now())
+  weeklyLogs          RearingWeeklyLog[]
+}
+
+model RearingWeeklyLog {
+  id                      Int          @id @default(autoincrement())
+  rearingBatchId          Int
+  rearingBatch            RearingBatch @relation(fields: [rearingBatchId], references: [id], onDelete: Cascade)
+  weekNumber              Int
+  feedPhase               String       // starter | grower | preLayer
+  remainingCount          Int
+  weeklyMortality         Int          @default(0)
+  cumulativeMortalityRate Float        @default(0)
+  feedConsumed            Float        @default(0)
+  feedCost                Float        @default(0)
+  heatingCost             Float        @default(0)
+  lightingCost            Float        @default(0)
+  beddingCost             Float        @default(0)
+  vaccinationCost         Float        @default(0)
+  medicineCost            Float        @default(0)
+  otherCosts              Float        @default(0)
+  totalWeeklyCost         Float        @default(0)
+  malesSold               Int          @default(0)
+  malesSaleValue          Float        @default(0)
+  notes                   String?
+}
+
+model DailyProduction {
+  id                 Int      @id @default(autoincrement())
+  date               String   @unique
+  activeHenCount     Int
+  dailyMortality     Int      @default(0)
+  totalEggsCollected Int
+  brokenEggs         Int      @default(0)
+  incubatorEggs      Int      @default(0)
+  personalUse        Int      @default(0)
+  netSaleableEggs    Int
+  productionRate     Float
+  notes              String?
+}
+
+model Sale {
+  id        Int      @id @default(autoincrement())
+  date      String
+  type      String   // eggs | fertilizedEggs | chicks | culledHens | manure | males
+  quantity  Float
+  unitType  String   // unit | tray
+  unitPrice Float
+  total     Float
+  buyerName String?
+  notes     String?
+}
+
+model Expense {
+  id          Int      @id @default(autoincrement())
+  date        String
+  scope       String   // general | batch | foundation
+  batchId     Int?
+  batchType   String?  // incubator | rearing
+  type        String   // operational | capital
+  category    String   // feed | medicine | electricity ...
+  description String
+  quantity    Float    @default(1)
+  unitPrice   Float
+  total       Float
+  notes       String?
+}
+
+model ExpansionPlan {
+  id             Int                  @id @default(autoincrement())
+  name           String
+  durationMonths Int                  @default(12)
+  startDate      String
+  createdAt      DateTime             @default(now())
+  months         ExpansionPlanMonth[]
+}
+
+model ExpansionPlanMonth {
+  id                    Int           @id @default(autoincrement())
+  planId                Int
+  plan                  ExpansionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  month                 Int
+  addedHens             Int           @default(0)
+  source                String        // incubator | purchased
+  estimatedMortality    Int           @default(0)
+  netActiveHens         Int
+  requiredSpaceM2       Float
+  monthlyFeedKg         Float
+  feedCost              Float
+  expectedEggProduction Int
+  expectedRevenue       Float
+  operationalCost       Float
+  expectedProfit        Float
+  cumulativeProfit      Float
+  selfFinancingGap      Float
+}
+
+model Alert {
+  id             Int      @id @default(autoincrement())
+  date           String
+  type           String   // info | warning | danger | success
+  category       String   // incubator | vaccination | production | mortality | general
+  title          String
+  message        String
+  relatedBatchId Int?
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+}
