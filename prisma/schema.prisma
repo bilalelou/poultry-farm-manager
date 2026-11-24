@@ -127,12 +127,15 @@ model Expense {
 }
 
 model ExpansionPlan {
-  id             Int                  @id @default(autoincrement())
-  name           String
-  durationMonths Int                  @default(12)
-  startDate      String
-  createdAt      DateTime             @default(now())
-  months         ExpansionPlanMonth[]
+  id                  Int                  @id @default(autoincrement())
+  name                String
+  durationMonths      Int                  @default(12)
+  targetMonthlyProfit Float                @default(5000)
+  strategy            String               @default("incubator") // incubator | hybrid | purchased
+  description         String?
+  startDate           String
+  createdAt           DateTime             @default(now())
+  months              ExpansionPlanMonth[]
 }
 
 model ExpansionPlanMonth {
@@ -141,18 +144,22 @@ model ExpansionPlanMonth {
   plan                  ExpansionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   month                 Int
   addedHens             Int           @default(0)
+  incubatorEggsUsed     Int           @default(0)
   source                String        // incubator | purchased
   estimatedMortality    Int           @default(0)
   netActiveHens         Int
   requiredSpaceM2       Float
   monthlyFeedKg         Float
   feedCost              Float
+  rearingCost           Float         @default(0)
   expectedEggProduction Int
+  maleSalesRevenue      Float         @default(0)
   expectedRevenue       Float
   operationalCost       Float
   expectedProfit        Float
   cumulativeProfit      Float
   selfFinancingGap      Float
+  milestoneNote         String?
 }
 
 model Alert {

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { generateStrategicExpansionPlan } from '@/lib/expansion-calculator';
+import type { Settings } from '@/lib/types';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -171,6 +173,114 @@ export async function GET(request: Request) {
         }
         return NextResponse.json(items);
       }
+      case 'expansionPlans': {
+        let items = await prisma.expansionPlan.findMany({
+          include: { months: { orderBy: { month: 'asc' } } },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (items.length === 0) {
+          // توليد خطة الهدف (5,000 د.م صافي ربح شهري بعد سنة) تلقائياً من معطيات المزرعة الفعلية
+          const [settingsRow, flocks, prods, rears, incs, vals] = await Promise.all([
+            prisma.settings.findFirst(),
+            prisma.flockGroup.findMany(),
+            prisma.dailyProduction.findMany({ orderBy: { date: 'desc' }, take: 1 }),
+            prisma.rearingBatch.findMany({ where: { status: 'rearing' } }),
+            prisma.incubatorBatch.findMany({ where: { status: 'incubating' } }),
+            prisma.valuationItem.findMany(),
+          ]);
+          const settings = (settingsRow as unknown as Settings) || {
+            incubatorCapacity: 100,
+            feedPrices: { starter: 5.5, grower: 5.0, preLayer: 5.0, layer: 5.0 },
+            dailyFeedConsumption: { starter: 25, grower: 65, preLayer: 90, layer: 110 },
+            sellingPrices: { egg: 2.0, tray: 60, fertilizedEgg: 3.5, chick: 7.0, culledHen: 40, maleBroiler: 30, manure: 15 },
+            marketReadyHenPrice: 75,
+            targetRates: { fertility: 85, hatch: 80, production: 75, maxMortality: 5 },
+            housingDensity: 6,
+            incubatorElectricityCost: 60,
+            incubatorCleaningCost: 20,
+            currency: 'MAD',
+            currencySymbol: 'د.م',
+          };
+          const layerGroup = flocks.find(f => f.category === 'layers');
+          const roosterGroup = flocks.find(f => f.category === 'roosters');
+          const currentLayingHens = layerGroup?.femalesCount ?? prods[0]?.activeHenCount ?? 10;
+          const currentRoosters = roosterGroup?.malesCount ?? 5;
+          const pendingPulletsHens = rears.reduce((s, r) => {
+            const healthy = r.currentHealthyCount ?? Math.max(0, r.initialChickCount - (r.mortalityCount || 0));
+            return s + Math.max(0, healthy - (r.malesCount || 0));
+          }, 0);
+          const pendingPulletsMales = rears.reduce((s, r) => s + (r.malesCount || 0), 0);
+          const incubatingEggsCount = incs.reduce((s, b) => s + b.eggCount, 0);
+
+          // اكتشاف سعة الفقاسة من الأصول إذا كانت مذكورة (مثلاً 605)
+          let detectedCap = settings.incubatorCapacity || 100;
+          const incAsset = vals.find(v => v.category === 'equipment' && v.name.includes('فقاسة'));
+          if (incAsset) {
+            const match = incAsset.name.match(/(\d+)/);
+            if (match && Number(match[1]) > detectedCap) detectedCap = Number(match[1]);
+          }
+
+          const summary = generateStrategicExpansionPlan(
+            {
+              settings,
+              currentLayingHens,
+              currentRoosters,
+              pendingPulletsHens,
+              pendingPulletsMales,
+              incubatingEggsCount,
+              incubatorCapacity: detectedCap,
+            },
+            { targetMonthlyProfit: 5000, durationMonths: 12, strategy: 'incubator' }
+          );
+
+          await prisma.expansionPlan.create({
+            data: {
+              name: 'خطة الوصول إلى 5,000 د.م صافي ربح شهري (خلال سنة)',
+              durationMonths: 12,
+              targetMonthlyProfit: 5000,
+              strategy: 'incubator',
+              description: `خطة مبنية على معطيات المزرعة (${currentLayingHens} دجاجة بياضة + ${pendingPulletsHens} عتوكة ATK-2611 + ${incubatingEggsCount} بيضة في الفقاسة بسعر ${settings.sellingPrices.egg} د.م/بيضة)`,
+              startDate: new Date().toISOString().split('T')[0],
+              months: {
+                create: summary.months.map(m => ({
+                  month: m.month,
+                  addedHens: m.addedHens,
+                  incubatorEggsUsed: m.incubatorEggsUsed || 0,
+                  source: m.source,
+                  estimatedMortality: m.estimatedMortality,
+                  netActiveHens: m.netActiveHens,
+                  requiredSpaceM2: m.requiredSpaceM2,
+                  monthlyFeedKg: m.monthlyFeedKg,
+                  feedCost: m.feedCost,
+                  rearingCost: m.rearingCost || 0,
+                  expectedEggProduction: m.expectedEggProduction,
+                  maleSalesRevenue: m.maleSalesRevenue || 0,
+                  expectedRevenue: m.expectedRevenue,
+                  operationalCost: m.operationalCost,
+                  expectedProfit: m.expectedProfit,
+                  cumulativeProfit: m.cumulativeProfit,
+                  selfFinancingGap: m.selfFinancingGap,
+                  milestoneNote: m.milestoneNote || '',
+                })),
+              },
+            },
+          });
+
+          items = await prisma.expansionPlan.findMany({
+            include: { months: { orderBy: { month: 'asc' } } },
+            orderBy: { createdAt: 'desc' },
+          });
+        }
+        return NextResponse.json(items);
+      }
+      case 'expansionPlanMonths': {
+        const planId = searchParams.get('planId');
+        const items = await prisma.expansionPlanMonth.findMany({
+          where: planId ? { planId: Number(planId) } : undefined,
+          orderBy: { month: 'asc' },
+        });
+        return NextResponse.json(items);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
@@ -235,6 +345,21 @@ export async function POST(request: Request) {
         const item = await prisma.valuationItem.create({ data: body });
         return NextResponse.json(item);
       }
+      case 'expansionPlans': {
+        const { months, ...planData } = body;
+        const item = await prisma.expansionPlan.create({
+          data: {
+            ...planData,
+            months: Array.isArray(months) ? { create: months } : undefined,
+          },
+          include: { months: { orderBy: { month: 'asc' } } },
+        });
+        return NextResponse.json(item);
+      }
+      case 'expansionPlanMonths': {
+        const item = await prisma.expansionPlanMonth.create({ data: body });
+        return NextResponse.json(item);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
@@ -287,6 +412,21 @@ export async function PUT(request: Request) {
         const updated = await prisma.valuationItem.update({ where: { id }, data: body });
         return NextResponse.json(updated);
       }
+      case 'expansionPlans': {
+        const { months, ...planData } = body;
+        if (Array.isArray(months)) {
+          await prisma.expansionPlanMonth.deleteMany({ where: { planId: id } });
+        }
+        const updated = await prisma.expansionPlan.update({
+          where: { id },
+          data: {
+            ...planData,
+            months: Array.isArray(months) ? { create: months } : undefined,
+          },
+          include: { months: { orderBy: { month: 'asc' } } },
+        });
+        return NextResponse.json(updated);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
@@ -337,6 +477,15 @@ export async function DELETE(request: Request) {
       }
       case 'valuationItems': {
         await prisma.valuationItem.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'expansionPlans': {
+        await prisma.expansionPlanMonth.deleteMany({ where: { planId: id } });
+        await prisma.expansionPlan.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'expansionPlanMonths': {
+        await prisma.expansionPlanMonth.delete({ where: { id } });
         return NextResponse.json({ success: true });
       }
       default:

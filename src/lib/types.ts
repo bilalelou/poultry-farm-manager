@@ -249,26 +249,34 @@ export interface ExpansionPlanMonth {
   planId: number;
   month: number; // 1-24
   addedHens: number;
+  incubatorEggsUsed?: number;
   source: ExpansionSource;
   estimatedMortality: number;
   netActiveHens: number;
   requiredSpaceM2: number;
   monthlyFeedKg: number;
   feedCost: number;
+  rearingCost?: number;
   expectedEggProduction: number;
+  maleSalesRevenue?: number;
   expectedRevenue: number;
   operationalCost: number;
   expectedProfit: number;
   cumulativeProfit: number;
   selfFinancingGap: number;
+  milestoneNote?: string;
 }
 
 export interface ExpansionPlan {
   id?: number;
   name: string;
   durationMonths: number; // 12 or 24
+  targetMonthlyProfit?: number;
+  strategy?: 'incubator' | 'hybrid' | 'purchased';
+  description?: string;
   startDate: string;
   createdAt: string;
+  months?: ExpansionPlanMonth[];
 }
 
 // === التنبيهات ===

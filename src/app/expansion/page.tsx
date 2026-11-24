@@ -2,288 +2,772 @@
 
 import { useState, useEffect } from 'react';
 import AppShell from '@/components/AppShell';
-import { Card, Badge, LoadingSpinner } from '@/components/ui';
+import { Card, Badge, LoadingSpinner, ConfirmDialog } from '@/components/ui';
 import { db, getSettings } from '@/lib/db';
-import type { Settings } from '@/lib/types';
+import type { Settings, ExpansionPlan } from '@/lib/types';
+import {
+  generateStrategicExpansionPlan,
+  estimateMonthlyProfitPerHen,
+  type FarmBaseline,
+  type CalculatedMonthRow,
+  type ExpansionSummary,
+} from '@/lib/expansion-calculator';
 import { formatCurrency, formatNumber, todayISO, cn } from '@/lib/utils';
-import { Target, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
-import { ResponsiveContainer, LineChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
-
-interface MonthPlan {
-  month: number;
-  addedHens: number;
-  source: 'incubator' | 'purchased';
-  // Calculated
-  estimatedMortality: number;
-  netActiveHens: number;
-  requiredSpaceM2: number;
-  monthlyFeedKg: number;
-  feedCost: number;
-  expectedEggProduction: number;
-  expectedRevenue: number;
-  operationalCost: number;
-  expectedProfit: number;
-  cumulativeProfit: number;
-}
+import {
+  Target,
+  TrendingUp,
+  AlertCircle,
+  CheckCircle,
+  Save,
+  Sparkles,
+  Trash2,
+  Egg,
+  Bird,
+  Warehouse,
+  Wallet,
+} from 'lucide-react';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ReferenceLine,
+} from 'recharts';
 
 export default function ExpansionPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [baseline, setBaseline] = useState<FarmBaseline | null>(null);
+  const [savedPlans, setSavedPlans] = useState<ExpansionPlan[]>([]);
+  const [activePlanId, setActivePlanId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
-  const [planName, setPlanName] = useState('خطة التوسع الأولى');
-  const [duration, setDuration] = useState(12);
-  const [planData, setPlanData] = useState<MonthPlan[]>([]);
-  const [showPlan, setShowPlan] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [deletePlanId, setDeletePlanId] = useState<number | null>(null);
 
-  useEffect(() => { getSettings().then(s => { setSettings(s); setLoading(false); }); }, []);
+  // Plan parameters
+  const [planName, setPlanName] = useState('خطة الوصول إلى 5,000 د.م صافي ربح شهري (خلال سنة)');
+  const [targetMonthlyProfit, setTargetMonthlyProfit] = useState<number>(5000);
+  const [duration, setDuration] = useState<number>(12);
+  const [strategy, setStrategy] = useState<'incubator' | 'hybrid' | 'purchased'>('incubator');
 
-  function generatePlan() {
-    if (!settings) return;
-    const months: MonthPlan[] = [];
-    let cumActiveHens = 0;
-    let cumProfit = 0;
+  // Active plan rows & calculated summary
+  const [summary, setSummary] = useState<ExpansionSummary | null>(null);
 
-    for (let m = 1; m <= duration; m++) {
-      const plan: MonthPlan = {
-        month: m,
-        addedHens: 0,
-        source: 'purchased',
-        estimatedMortality: 0,
-        netActiveHens: 0,
-        requiredSpaceM2: 0,
-        monthlyFeedKg: 0,
-        feedCost: 0,
-        expectedEggProduction: 0,
-        expectedRevenue: 0,
-        operationalCost: 0,
-        expectedProfit: 0,
-        cumulativeProfit: 0,
-      };
+  useEffect(() => {
+    loadAllData();
+  }, []);
 
-      // Apply mortality to existing hens
-      const mortality = Math.round(cumActiveHens * 0.003); // ~0.3% monthly
-      cumActiveHens = Math.max(0, cumActiveHens - mortality);
-      plan.estimatedMortality = mortality;
-      plan.netActiveHens = cumActiveHens;
-      plan.requiredSpaceM2 = Math.ceil(cumActiveHens / settings.housingDensity);
-      plan.monthlyFeedKg = (cumActiveHens * settings.dailyFeedConsumption.layer * 30) / 1000;
-      plan.feedCost = plan.monthlyFeedKg * settings.feedPrices.layer;
-      plan.expectedEggProduction = Math.round(cumActiveHens * 30 * (settings.targetRates.production / 100));
-      plan.expectedRevenue = plan.expectedEggProduction * settings.sellingPrices.egg;
-      plan.operationalCost = plan.feedCost + (cumActiveHens * 2); // 2 MAD/hen for other costs
-      plan.expectedProfit = plan.expectedRevenue - plan.operationalCost;
-      cumProfit += plan.expectedProfit;
-      plan.cumulativeProfit = cumProfit;
+  async function loadAllData() {
+    setLoading(true);
+    try {
+      const [s, flocks, prods, rears, incs, vals, plans] = await Promise.all([
+        getSettings(),
+        db.flockGroups.toArray(),
+        db.dailyProduction.toArray(),
+        db.rearingBatches.toArray(),
+        db.incubatorBatches.toArray(),
+        db.valuationItems.toArray(),
+        db.expansionPlans.toArray(),
+      ]);
 
-      months.push(plan);
-    }
+      setSettings(s);
 
-    setPlanData(months);
-    setShowPlan(true);
-  }
+      // بناء خط الأساس الحي من بيانات المزرعة الفعلية في PostgreSQL
+      const sortedProds = [...prods].sort((a, b) => (b.date > a.date ? 1 : -1));
+      const layerGroup = flocks.find(f => f.category === 'layers');
+      const roosterGroup = flocks.find(f => f.category === 'roosters');
 
-  function updateMonth(monthIndex: number, field: 'addedHens' | 'source', value: number | string) {
-    if (!settings) return;
-    const updated = [...planData];
-    if (field === 'addedHens') updated[monthIndex].addedHens = value as number;
-    if (field === 'source') updated[monthIndex].source = value as 'incubator' | 'purchased';
+      const currentLayingHens = layerGroup?.femalesCount ?? sortedProds[0]?.activeHenCount ?? 10;
+      const currentRoosters = roosterGroup?.malesCount ?? 5;
 
-    // Recalculate from this month forward
-    let cumActiveHens = 0;
-    let cumProfit = 0;
+      const activeRearing = rears.filter(r => r.status === 'rearing');
+      const pendingPulletsHens = activeRearing.reduce((sum, r) => {
+        const healthy = r.currentHealthyCount ?? Math.max(0, r.initialChickCount - (r.mortalityCount || 0));
+        return sum + Math.max(0, healthy - (r.malesCount || 0));
+      }, 0);
+      const pendingPulletsMales = activeRearing.reduce((sum, r) => sum + (r.malesCount || 0), 0);
 
-    for (let i = 0; i < updated.length; i++) {
-      // Add hens from this month
-      const added = updated[i].addedHens;
-      if (updated[i].source === 'incubator') {
-        // Incubator: 50% female, available after 5 months
-        if (i >= 5) {
-          const sourceMonth = i - 5;
-          // Check if that month had incubator additions
-        }
-        // For simplicity: add females directly but halved
-        cumActiveHens += Math.floor(added * 0.5);
-      } else {
-        cumActiveHens += added;
+      const incubatingEggsCount = incs
+        .filter(b => b.status === 'incubating')
+        .reduce((sum, b) => sum + b.eggCount, 0);
+
+      let detectedCap = s.incubatorCapacity || 100;
+      const incAsset = vals.find(v => v.category === 'equipment' && v.name.includes('فقاسة'));
+      if (incAsset) {
+        const match = incAsset.name.match(/(\d+)/);
+        if (match && Number(match[1]) > detectedCap) detectedCap = Number(match[1]);
       }
 
-      const mortality = Math.round(cumActiveHens * 0.003);
-      cumActiveHens = Math.max(0, cumActiveHens - mortality);
+      const farmBase: FarmBaseline = {
+        settings: s,
+        currentLayingHens,
+        currentRoosters,
+        pendingPulletsHens,
+        pendingPulletsMales,
+        incubatingEggsCount,
+        incubatorCapacity: detectedCap,
+      };
+      setBaseline(farmBase);
+      setSavedPlans(plans);
 
-      updated[i].estimatedMortality = mortality;
-      updated[i].netActiveHens = cumActiveHens;
-      updated[i].requiredSpaceM2 = Math.ceil(cumActiveHens / settings.housingDensity);
-      updated[i].monthlyFeedKg = (cumActiveHens * settings.dailyFeedConsumption.layer * 30) / 1000;
-      updated[i].feedCost = updated[i].monthlyFeedKg * settings.feedPrices.layer;
-      updated[i].expectedEggProduction = Math.round(cumActiveHens * 30 * (settings.targetRates.production / 100));
-      updated[i].expectedRevenue = updated[i].expectedEggProduction * settings.sellingPrices.egg;
-      updated[i].operationalCost = updated[i].feedCost + (cumActiveHens * 2);
-      updated[i].expectedProfit = updated[i].expectedRevenue - updated[i].operationalCost;
-      cumProfit += updated[i].expectedProfit;
-      updated[i].cumulativeProfit = cumProfit;
+      // عرض الخطة المحفوظة تلقائياً أو حساب خطة الـ 5,000 د.م مباشرة
+      if (plans.length > 0 && plans[0].months && plans[0].months.length > 0) {
+        selectSavedPlan(plans[0], farmBase);
+      } else {
+        const computed = generateStrategicExpansionPlan(farmBase, {
+          targetMonthlyProfit: 5000,
+          durationMonths: 12,
+          strategy: 'incubator',
+        });
+        setSummary(computed);
+      }
+    } catch (err) {
+      console.error('Error loading expansion data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function selectSavedPlan(plan: ExpansionPlan, farmBase?: FarmBaseline) {
+    const base = farmBase || baseline;
+    setActivePlanId(plan.id || null);
+    setPlanName(plan.name);
+    setDuration(plan.durationMonths || 12);
+    const tgt = plan.targetMonthlyProfit || 5000;
+    const strat = (plan.strategy || 'incubator') as 'incubator' | 'hybrid' | 'purchased';
+    setTargetMonthlyProfit(tgt);
+    setStrategy(strat);
+
+    if (plan.months && plan.months.length > 0 && base) {
+      const rows: CalculatedMonthRow[] = plan.months.map(m => ({
+        month: m.month,
+        addedHens: m.addedHens,
+        incubatorEggsUsed: m.incubatorEggsUsed || 0,
+        source: m.source,
+        estimatedMortality: m.estimatedMortality,
+        netActiveHens: m.netActiveHens,
+        requiredSpaceM2: m.requiredSpaceM2,
+        monthlyFeedKg: m.monthlyFeedKg,
+        feedCost: m.feedCost,
+        rearingCost: m.rearingCost || 0,
+        expectedEggProduction: m.expectedEggProduction,
+        eggsSold: Math.max(0, m.expectedEggProduction - Math.min(m.incubatorEggsUsed || 0, Math.floor(m.expectedEggProduction / 3))),
+        eggSalesRevenue: Math.max(0, m.expectedRevenue - (m.maleSalesRevenue || 0)),
+        externalEggCost: 0,
+        maleSalesRevenue: m.maleSalesRevenue || 0,
+        expectedRevenue: m.expectedRevenue,
+        operationalCost: m.operationalCost,
+        expectedProfit: m.expectedProfit,
+        cumulativeProfit: m.cumulativeProfit,
+        selfFinancingGap: m.selfFinancingGap,
+        roostersCount: Math.max(base.currentRoosters, Math.ceil(m.netActiveHens / 12)),
+        milestoneNote: m.milestoneNote || '',
+      }));
+
+      let minCumCash = 0;
+      let breakEvenMonth: number | null = null;
+      let targetReachedMonth: number | null = null;
+      for (const r of rows) {
+        if (r.cumulativeProfit < minCumCash) minCumCash = r.cumulativeProfit;
+        if (breakEvenMonth === null && r.month > 4 && r.cumulativeProfit > 0) breakEvenMonth = r.month;
+        if (targetReachedMonth === null && r.expectedProfit >= tgt) targetReachedMonth = r.month;
+      }
+
+      const profitPerHen = estimateMonthlyProfitPerHen(base.settings);
+      const last = rows[rows.length - 1];
+      setSummary({
+        months: rows,
+        targetHensNeeded: Math.ceil((tgt * 1.05) / Math.max(5, profitPerHen)),
+        netProfitPerHenMonth: Math.round(profitPerHen * 10) / 10,
+        finalActiveHens: last?.netActiveHens || 0,
+        finalMonthlyProfit: last?.expectedProfit || 0,
+        totalCumulativeProfit: last?.cumulativeProfit || 0,
+        maxWorkingCapitalGap: Math.round(Math.abs(minCumCash)),
+        breakEvenMonth,
+        targetReachedMonth,
+        totalIncubatorEggsUsed: rows.reduce((s, r) => s + (r.incubatorEggsUsed || 0), 0),
+        totalMalesSoldRevenue: rows.reduce((s, r) => s + (r.maleSalesRevenue || 0), 0),
+      });
+    }
+  }
+
+  function recalculateSmartPlan(customStrategy?: 'incubator' | 'hybrid' | 'purchased', customTarget?: number, customDuration?: number) {
+    if (!baseline) return;
+    const tgt = customTarget ?? targetMonthlyProfit;
+    const dur = customDuration ?? duration;
+    const strat = customStrategy ?? strategy;
+    const computed = generateStrategicExpansionPlan(baseline, {
+      targetMonthlyProfit: tgt,
+      durationMonths: dur,
+      strategy: strat,
+    });
+    setSummary(computed);
+    setActivePlanId(null);
+    if (strat === 'incubator') {
+      setPlanName(`خطة الوصول إلى ${formatNumber(tgt)} د.م شهرياً عبر الفقاسة (${dur} شهراً)`);
+    } else if (strat === 'hybrid') {
+      setPlanName(`خطة هجينة (فقاسة + عتوكة) لهدف ${formatNumber(tgt)} د.م شهرياً (${dur} شهراً)`);
+    } else {
+      setPlanName(`خطة سريعة (شراء عتوكة) لهدف ${formatNumber(tgt)} د.م شهرياً (${dur} شهراً)`);
+    }
+  }
+
+  function updateManualRow(index: number, field: 'addedHens' | 'source', value: number | string) {
+    if (!summary || !baseline || !settings) return;
+    const rows = summary.months.map(r => ({ ...r }));
+    if (field === 'addedHens') rows[index].addedHens = Math.max(0, Number(value) || 0);
+    if (field === 'source') rows[index].source = value as 'incubator' | 'purchased';
+
+    // إعادة حساب التراكمي للقطيع والأرباح انطلاقاً من القطيع الحالي
+    let activeHens = baseline.currentLayingHens;
+    let cumProfit = 0;
+    let minCumCash = 0;
+    let breakEvenMonth: number | null = null;
+    let targetReachedMonth: number | null = null;
+
+    const prodRate = (settings.targetRates.production || 75) / 100;
+    const eggPrice = settings.sellingPrices.egg || 2.0;
+    const layerFeedG = settings.dailyFeedConsumption.layer || 110;
+    const layerFeedPrice = settings.feedPrices.layer || 5.0;
+    const density = settings.housingDensity || 6;
+
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const mortality = i === 0 ? 0 : Math.round(activeHens * 0.005);
+      activeHens = Math.max(0, activeHens - mortality + r.addedHens);
+
+      const expectedEggProduction = Math.round(activeHens * 30 * prodRate);
+      const eggsToInc = r.incubatorEggsUsed || 0;
+      const internalDiverted = Math.min(eggsToInc, Math.floor(expectedEggProduction / 3));
+      const eggsSold = Math.max(0, expectedEggProduction - internalDiverted);
+      const eggSalesRevenue = Math.round(eggsSold * eggPrice);
+      const expectedRevenue = eggSalesRevenue + (r.maleSalesRevenue || 0);
+
+      const roostersCount = Math.max(baseline.currentRoosters, Math.ceil(activeHens / 12));
+      const monthlyFeedKg = Math.round(((activeHens + roostersCount) * layerFeedG * 30 / 1000) * 10) / 10;
+      const feedCost = Math.round(monthlyFeedKg * layerFeedPrice);
+      const operationalCost = Math.round(feedCost + activeHens * 2 + (r.rearingCost || 0));
+      const expectedProfit = Math.round(expectedRevenue - operationalCost);
+      cumProfit += expectedProfit;
+
+      if (cumProfit < minCumCash) minCumCash = cumProfit;
+      if (breakEvenMonth === null && r.month > 4 && cumProfit > 0) breakEvenMonth = r.month;
+      if (targetReachedMonth === null && expectedProfit >= targetMonthlyProfit) targetReachedMonth = r.month;
+
+      rows[i] = {
+        ...r,
+        estimatedMortality: mortality,
+        netActiveHens: activeHens,
+        requiredSpaceM2: Math.ceil((activeHens + roostersCount) / density),
+        monthlyFeedKg,
+        feedCost,
+        expectedEggProduction,
+        eggsSold,
+        eggSalesRevenue,
+        expectedRevenue,
+        operationalCost,
+        expectedProfit,
+        cumulativeProfit: Math.round(cumProfit),
+        selfFinancingGap: expectedProfit < 0 ? Math.abs(expectedProfit) : 0,
+        roostersCount,
+      };
     }
 
-    setPlanData(updated);
+    const last = rows[rows.length - 1];
+    setSummary({
+      ...summary,
+      months: rows,
+      finalActiveHens: last?.netActiveHens || 0,
+      finalMonthlyProfit: last?.expectedProfit || 0,
+      totalCumulativeProfit: Math.round(cumProfit),
+      maxWorkingCapitalGap: Math.round(Math.abs(minCumCash)),
+      breakEvenMonth,
+      targetReachedMonth,
+    });
+  }
+
+  async function savePlanToPostgres() {
+    if (!summary || !baseline) return;
+    setSaving(true);
+    try {
+      const payload = {
+        name: planName.trim() || 'خطة التوسع المخصصة',
+        durationMonths: duration,
+        targetMonthlyProfit,
+        strategy,
+        description: `خطة مبنية على ${baseline.currentLayingHens} دجاجة بياضة + ${baseline.pendingPulletsHens} عتوكة + ${baseline.incubatingEggsCount} بيضة في الفقاسة (الهدف: ${targetMonthlyProfit} د.م/شهر)`,
+        startDate: todayISO(),
+        months: summary.months.map(m => ({
+          month: m.month,
+          addedHens: m.addedHens,
+          incubatorEggsUsed: m.incubatorEggsUsed || 0,
+          source: m.source,
+          estimatedMortality: m.estimatedMortality,
+          netActiveHens: m.netActiveHens,
+          requiredSpaceM2: m.requiredSpaceM2,
+          monthlyFeedKg: m.monthlyFeedKg,
+          feedCost: m.feedCost,
+          rearingCost: m.rearingCost || 0,
+          expectedEggProduction: m.expectedEggProduction,
+          maleSalesRevenue: m.maleSalesRevenue || 0,
+          expectedRevenue: m.expectedRevenue,
+          operationalCost: m.operationalCost,
+          expectedProfit: m.expectedProfit,
+          cumulativeProfit: m.cumulativeProfit,
+          selfFinancingGap: m.selfFinancingGap,
+          milestoneNote: m.milestoneNote || '',
+        })),
+      };
+
+      let savedId = activePlanId;
+      if (activePlanId) {
+        await db.expansionPlans.update(activePlanId, payload);
+      } else {
+        savedId = await db.expansionPlans.add(payload);
+      }
+
+      const refreshed = await db.expansionPlans.toArray();
+      setSavedPlans(refreshed);
+      if (savedId) setActivePlanId(savedId);
+      setSaveNotice('✅ تم حفظ خطة التوسع في قاعدة بيانات PostgreSQL بنجاح');
+      setTimeout(() => setSaveNotice(null), 4000);
+    } catch (err) {
+      console.error('Failed to save expansion plan:', err);
+      setSaveNotice('❌ حدث خطأ أثناء حفظ الخطة');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function confirmDeletePlan() {
+    if (!deletePlanId) return;
+    await db.expansionPlans.delete(deletePlanId);
+    setDeletePlanId(null);
+    const refreshed = await db.expansionPlans.toArray();
+    setSavedPlans(refreshed);
+    if (refreshed.length > 0) {
+      selectSavedPlan(refreshed[0]);
+    } else if (baseline) {
+      recalculateSmartPlan();
+    }
   }
 
   if (loading) return <AppShell><LoadingSpinner /></AppShell>;
 
   const sym = settings?.currencySymbol || 'د.م';
-  const totalAddedHens = planData.reduce((s, m) => s + m.addedHens, 0);
-  const finalHens = planData.length > 0 ? planData[planData.length - 1].netActiveHens : 0;
-  const totalProfit = planData.length > 0 ? planData[planData.length - 1].cumulativeProfit : 0;
-
-  // Self-financing: cost of rearing one batch (5 months)
-  const rearingCostPerBatch = settings ? (settings.incubatorCapacity * 0.5 * 70) : 5000; // Approximate cost
-  const selfFinanced = totalProfit >= rearingCostPerBatch;
-  const gap = rearingCostPerBatch - totalProfit;
-
-  // Chart data
-  const chartData = planData.map(m => ({
+  const months = summary?.months || [];
+  const chartData = months.map(m => ({
     month: `شهر ${m.month}`,
     hens: m.netActiveHens,
     revenue: Math.round(m.expectedRevenue),
     costs: Math.round(m.operationalCost),
-    profit: Math.round(m.cumulativeProfit),
+    monthlyProfit: Math.round(m.expectedProfit),
+    cumulativeProfit: Math.round(m.cumulativeProfit),
   }));
+
+  const targetMet = (summary?.finalMonthlyProfit || 0) >= targetMonthlyProfit;
 
   return (
     <AppShell>
-      <h1 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
-        <Target className="w-6 h-6 text-blue-600" />
-        محاكي خطة التوسع
-      </h1>
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-black text-slate-800 flex items-center gap-2">
+            <Target className="w-7 h-7 text-blue-600" />
+            خطة التوسع الاستراتيجية للوصول للربح المستهدف
+          </h1>
+          <p className="text-sm text-slate-500 mt-1">
+            محاكاة حقيقية مبنية على قطيعك الحالي، الفقاسة، أسعار البيض والعلف المسجلة في المزرعة
+          </p>
+        </div>
 
-      {/* Plan Setup */}
-      <Card className="p-5 mb-6">
-        <h3 className="font-bold text-slate-800 mb-4">⚙️ إعداد الخطة</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">اسم الخطة</label>
-            <input type="text" value={planName} onChange={e => setPlanName(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={savePlanToPostgres}
+            disabled={saving || !summary}
+            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-50 shadow-sm transition"
+          >
+            <Save className="w-4 h-4" />
+            {saving ? 'جاري الحفظ...' : activePlanId ? 'حفظ التعديلات' : 'حفظ الخطة في قاعدة البيانات'}
+          </button>
+        </div>
+      </div>
+
+      {saveNotice && (
+        <div className="mb-4 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-sm">
+          {saveNotice}
+        </div>
+      )}
+
+      {/* Live Farm Baseline Card */}
+      {baseline && settings && (
+        <Card className="p-5 mb-6 bg-gradient-to-l from-blue-50 via-white to-slate-50 border-blue-200">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-bold text-slate-800 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-blue-600" />
+              المعطيات الحالية المقروءة تلقائياً من مزرعتك:
+            </h3>
+            <Badge color="blue">سعة الفقاسة: {baseline.incubatorCapacity} بيضة</Badge>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">المدة (شهر)</label>
-            <div className="flex gap-2">
-              <button onClick={() => setDuration(12)} className={cn('flex-1 py-2 rounded-lg text-sm font-medium transition', duration === 12 ? 'bg-blue-600 text-white' : 'border border-slate-300 text-slate-600')}>12 شهر</button>
-              <button onClick={() => setDuration(24)} className={cn('flex-1 py-2 rounded-lg text-sm font-medium transition', duration === 24 ? 'bg-blue-600 text-white' : 'border border-slate-300 text-slate-600')}>24 شهر</button>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
+            <div className="bg-white p-3 rounded-xl border border-slate-200">
+              <p className="text-xs text-slate-500">الدجاج البياض الحالي</p>
+              <p className="text-lg font-black text-pink-700">{baseline.currentLayingHens} دجاجة</p>
+            </div>
+            <div className="bg-white p-3 rounded-xl border border-slate-200">
+              <p className="text-xs text-slate-500">عتوكة قيد الاستعداد</p>
+              <p className="text-lg font-black text-amber-600">+{baseline.pendingPulletsHens} أنثى</p>
+            </div>
+            <div className="bg-white p-3 rounded-xl border border-slate-200">
+              <p className="text-xs text-slate-500">بيض بالفقاسة حالياً</p>
+              <p className="text-lg font-black text-blue-700">{baseline.incubatingEggsCount} بيضة</p>
+            </div>
+            <div className="bg-white p-3 rounded-xl border border-slate-200">
+              <p className="text-xs text-slate-500">سعر البيضة / الصينية</p>
+              <p className="text-lg font-black text-emerald-700">{settings.sellingPrices.egg} {sym}</p>
+            </div>
+            <div className="bg-white p-3 rounded-xl border border-slate-200">
+              <p className="text-xs text-slate-500">تكلفة علف البياض</p>
+              <p className="text-lg font-black text-slate-800">{settings.feedPrices.layer} {sym}/كغ</p>
+            </div>
+            <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200">
+              <p className="text-xs text-emerald-700 font-bold">ربح الدجاجة الشهري</p>
+              <p className="text-lg font-black text-emerald-800">~{summary?.netProfitPerHenMonth || 25} {sym}</p>
             </div>
           </div>
-          <div className="flex items-end">
-            <button onClick={generatePlan} className="w-full py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition">
-              إنشاء الخطة
-            </button>
+        </Card>
+      )}
+
+      {/* Saved Plans Selector (if any) */}
+      {savedPlans.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-6">
+          <span className="text-xs font-bold text-slate-500">الخطط المحفوظة:</span>
+          {savedPlans.map(p => (
+            <div
+              key={p.id}
+              className={cn(
+                'flex items-center gap-2 px-3 py-1.5 rounded-xl text-sm font-medium border transition cursor-pointer',
+                activePlanId === p.id
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+              )}
+              onClick={() => selectSavedPlan(p)}
+            >
+              <span>{p.name}</span>
+              <button
+                onClick={e => {
+                  e.stopPropagation();
+                  setDeletePlanId(p.id!);
+                }}
+                className={cn(
+                  'p-0.5 rounded hover:bg-red-500 hover:text-white transition',
+                  activePlanId === p.id ? 'text-blue-100' : 'text-slate-400'
+                )}
+                title="حذف الخطة"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Plan Setup & Goal Controls */}
+      <Card className="p-5 mb-6">
+        <h3 className="font-bold text-slate-800 mb-4">⚙️ إعداد وتعديل هدف التوسع</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div className="lg:col-span-2">
+            <label className="block text-xs font-bold text-slate-600 mb-1">اسم الخطة</label>
+            <input
+              type="text"
+              value={planName}
+              onChange={e => setPlanName(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            />
           </div>
+
+          <div>
+            <label className="block text-xs font-bold text-emerald-700 mb-1">🎯 صافي الربح الشهري المستهدف ({sym})</label>
+            <input
+              type="number"
+              step="500"
+              min="500"
+              value={targetMonthlyProfit}
+              onChange={e => {
+                const v = Math.max(500, +e.target.value || 5000);
+                setTargetMonthlyProfit(v);
+              }}
+              className="w-full px-3 py-2 border border-emerald-300 rounded-lg text-sm font-black text-emerald-800 bg-emerald-50"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1">المدة</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setDuration(12);
+                  recalculateSmartPlan(strategy, targetMonthlyProfit, 12);
+                }}
+                className={cn(
+                  'flex-1 py-2 rounded-lg text-sm font-bold transition',
+                  duration === 12 ? 'bg-blue-600 text-white' : 'border border-slate-300 text-slate-600'
+                )}
+              >
+                سنة (12 شهر)
+              </button>
+              <button
+                onClick={() => {
+                  setDuration(24);
+                  recalculateSmartPlan(strategy, targetMonthlyProfit, 24);
+                }}
+                className={cn(
+                  'flex-1 py-2 rounded-lg text-sm font-bold transition',
+                  duration === 24 ? 'bg-blue-600 text-white' : 'border border-slate-300 text-slate-600'
+                )}
+              >
+                سنتان
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-600 mb-1">استراتيجية التوسع</label>
+            <select
+              value={strategy}
+              onChange={e => {
+                const st = e.target.value as 'incubator' | 'hybrid' | 'purchased';
+                setStrategy(st);
+                recalculateSmartPlan(st, targetMonthlyProfit, duration);
+              }}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-medium"
+            >
+              <option value="incubator">تفقيس ذاتي (من بيض المزرعة)</option>
+              <option value="hybrid">هجين (فقاسة + شراء عتوكة)</option>
+              <option value="purchased">شراء عتوكة جاهزة (سريع)</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-slate-500">
+            لتحقيق صافي ربح شهري قدره <strong>{formatCurrency(targetMonthlyProfit, sym)}</strong> بسعر البيضة{' '}
+            <strong>{settings?.sellingPrices.egg} {sym}</strong>، تحتاج تقريباً إلى{' '}
+            <strong className="text-blue-700">{summary?.targetHensNeeded || 209} دجاجة بياضة نشطة</strong>.
+          </p>
+          <button
+            onClick={() => recalculateSmartPlan()}
+            className="px-5 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition flex items-center gap-2"
+          >
+            <TrendingUp className="w-4 h-4" />
+            توليد وحساب الخطة الآن
+          </button>
         </div>
       </Card>
 
-      {showPlan && planData.length > 0 && (
+      {summary && months.length > 0 && (
         <>
-          {/* Self-Financing Indicator */}
-          <Card className={cn('p-5 mb-6 border-2', selfFinanced ? 'border-emerald-200 bg-emerald-50/50' : 'border-red-200 bg-red-50/50')}>
-            <div className="flex items-center gap-3">
-              {selfFinanced ? (
-                <CheckCircle className="w-8 h-8 text-emerald-600 shrink-0" />
-              ) : (
-                <AlertCircle className="w-8 h-8 text-red-600 shrink-0" />
-              )}
-              <div>
-                <h3 className={cn('font-bold text-lg', selfFinanced ? 'text-emerald-800' : 'text-red-800')}>
-                  {selfFinanced ? 'التمويل الذاتي كافٍ ✓' : 'يحتاج تمويل خارجي'}
-                </h3>
-                <p className="text-sm text-slate-600">
-                  {selfFinanced
-                    ? `الأرباح المتراكمة (${formatCurrency(totalProfit, sym)}) تغطي تكلفة تربية الدفعة الجديدة`
-                    : `المبلغ المطلوب: ${formatCurrency(Math.max(0, gap), sym)}`
-                  }
-                </p>
+          {/* Goal & Cashflow Status Banner */}
+          <Card
+            className={cn(
+              'p-5 mb-6 border-2',
+              targetMet ? 'border-emerald-300 bg-emerald-50/70' : 'border-amber-300 bg-amber-50/70'
+            )}
+          >
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                {targetMet ? (
+                  <CheckCircle className="w-8 h-8 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="w-8 h-8 text-amber-600 shrink-0 mt-0.5" />
+                )}
+                <div>
+                  <h3 className={cn('font-black text-lg', targetMet ? 'text-emerald-900' : 'text-amber-900')}>
+                    {targetMet
+                      ? `✓ الهدف محقق! تصل لصافي ربح ${formatCurrency(summary.finalMonthlyProfit, sym)} / شهر بحلول الشهر ${summary.targetReachedMonth || duration}`
+                      : `الربح المتوقع في الشهر ${duration}: ${formatCurrency(summary.finalMonthlyProfit, sym)} / شهر`}
+                  </h3>
+                  <p className="text-sm text-slate-700 mt-1">
+                    {summary.maxWorkingCapitalGap > 0
+                      ? `تحتاج خلال أشهر نمو الكتاكيت الأولى (أشهر 2-6) إلى سيولة مؤقتة (رأس مال دوار للعلف) تبلغ أقصاها ${formatCurrency(summary.maxWorkingCapitalGap, sym)}، وتُسترد بالكامل في الشهر ${summary.breakEvenMonth || 8} لتبدأ الأرباح الصافية.`
+                      : 'التدفق النقدي إيجابي وذاتي التمويل بالكامل طوال مدة الخطة!'}
+                  </p>
+                </div>
+              </div>
+              <div className="text-left md:text-right shrink-0 bg-white px-4 py-2.5 rounded-xl border border-slate-200">
+                <p className="text-xs text-slate-500">صافي الربح التراكمي بعد سنة</p>
+                <p className="text-2xl font-black text-emerald-700">{formatCurrency(summary.totalCumulativeProfit, sym)}</p>
               </div>
             </div>
           </Card>
 
-          {/* Summary Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <Card className="p-4 text-center"><p className="text-xs text-slate-500">الدجاج المضاف</p><p className="text-xl font-bold">{formatNumber(totalAddedHens)}</p></Card>
-            <Card className="p-4 text-center"><p className="text-xs text-slate-500">القطيع النهائي</p><p className="text-xl font-bold text-blue-600">{formatNumber(finalHens)}</p></Card>
-            <Card className="p-4 text-center"><p className="text-xs text-slate-500">المساحة المطلوبة</p><p className="text-xl font-bold">{planData[planData.length - 1]?.requiredSpaceM2 || 0} م²</p></Card>
-            <Card className="p-4 text-center"><p className="text-xs text-slate-500">الربح التراكمي</p><p className={cn('text-xl font-bold', totalProfit >= 0 ? 'text-emerald-600' : 'text-red-600')}>{formatCurrency(totalProfit, sym)}</p></Card>
+          {/* Summary KPI Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-slate-500">القطيع البياض بنهاية السنة</span>
+                <Bird className="w-4 h-4 text-blue-600" />
+              </div>
+              <p className="text-2xl font-black text-blue-700">{formatNumber(summary.finalActiveHens)} <span className="text-xs font-normal">دجاجة</span></p>
+            </Card>
+
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-slate-500">الربح الشهري في الشهر {duration}</span>
+                <TrendingUp className="w-4 h-4 text-emerald-600" />
+              </div>
+              <p className="text-2xl font-black text-emerald-700">{formatCurrency(summary.finalMonthlyProfit, sym)}</p>
+            </Card>
+
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-slate-500">البيض المطلوب للتفقيس</span>
+                <Egg className="w-4 h-4 text-amber-600" />
+              </div>
+              <p className="text-2xl font-black text-amber-700">{formatNumber(summary.totalIncubatorEggsUsed)} <span className="text-xs font-normal">بيضة</span></p>
+            </Card>
+
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-slate-500">المساحة المطلوبة للعنبر</span>
+                <Warehouse className="w-4 h-4 text-purple-600" />
+              </div>
+              <p className="text-2xl font-black text-purple-700">{months[months.length - 1]?.requiredSpaceM2 || 0} <span className="text-xs font-normal">م²</span></p>
+            </Card>
+
+            <Card className="p-4">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-slate-500">أقصى سيولة مؤقتة للعلف</span>
+                <Wallet className="w-4 h-4 text-red-500" />
+              </div>
+              <p className="text-2xl font-black text-slate-800">{formatCurrency(summary.maxWorkingCapitalGap, sym)}</p>
+            </Card>
           </div>
 
           {/* Charts */}
           <div className="grid lg:grid-cols-2 gap-6 mb-6">
             <Card className="p-5">
-              <h3 className="text-base font-bold text-slate-800 mb-3">نمو حجم القطيع</h3>
-              <div style={{ width: '100%', height: 250 }}>
+              <h3 className="text-base font-bold text-slate-800 mb-3">نمو القطيع البياض وصافي الربح الشهري مقابل الهدف</h3>
+              <div style={{ width: '100%', height: 270 }}>
                 <ResponsiveContainer>
                   <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip />
-                    <Line type="monotone" dataKey="hens" name="عدد الدجاج" stroke="#2563eb" strokeWidth={2} />
+                    <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
+                    <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
+                    <Tooltip formatter={(v: any, name: any) => name === 'القطيع البياض' ? `${v} دجاجة` : formatCurrency(Number(v) || 0, sym)} />
+                    <Legend />
+                    <ReferenceLine yAxisId="left" y={targetMonthlyProfit} stroke="#10b981" strokeDasharray="4 4" label="الهدف 5000" />
+                    <Line yAxisId="left" type="monotone" dataKey="monthlyProfit" name="صافي الربح الشهري" stroke="#10b981" strokeWidth={3} />
+                    <Line yAxisId="right" type="monotone" dataKey="hens" name="القطيع البياض" stroke="#2563eb" strokeWidth={2.5} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             </Card>
+
             <Card className="p-5">
-              <h3 className="text-base font-bold text-slate-800 mb-3">المداخيل مقابل التكاليف</h3>
-              <div style={{ width: '100%', height: 250 }}>
+              <h3 className="text-base font-bold text-slate-800 mb-3">المداخيل مقابل التكاليف التشغيلية والتربية</h3>
+              <div style={{ width: '100%', height: 270 }}>
                 <ResponsiveContainer>
                   <BarChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(v: any) => formatCurrency(Number(v) || 0, sym)} />
                     <Legend />
-                    <Bar dataKey="revenue" name="المداخيل" fill="#10b981" />
-                    <Bar dataKey="costs" name="التكاليف" fill="#ef4444" />
+                    <Bar dataKey="revenue" name="المداخيل (بيض + ديوك)" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="costs" name="التكاليف (علف بياض + تربية)" fill="#ef4444" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </Card>
           </div>
 
-          {/* Monthly Planning Table */}
+          {/* Monthly Roadmap Table */}
           <Card className="overflow-x-auto mb-6">
-            <div className="p-4 border-b border-slate-200">
-              <h3 className="font-bold text-slate-800">📋 الجدول الشهري (أدخل عدد الدجاج المضاف لكل شهر)</h3>
+            <div className="p-4 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="font-bold text-slate-800">📋 خارطة الطريق الشهرية التفصيلية ({duration} شهراً)</h3>
+                <p className="text-xs text-slate-500">تشمل دخول دفعاتك الحالية، مواعيد التفقيس، مبيعات الديوك، وتكاليف التربية الشهرية</p>
+              </div>
+              <Badge color="green">بيع الذكور محسوب بسعر {settings?.sellingPrices.maleBroiler || 30} {sym}</Badge>
             </div>
-            <table className="data-table">
+            <table className="data-table text-xs md:text-sm">
               <thead>
                 <tr>
                   <th>الشهر</th>
-                  <th>دجاج مضاف</th>
-                  <th>المصدر</th>
-                  <th>النفوق</th>
-                  <th>القطيع</th>
+                  <th>دخول للإنتاج</th>
+                  <th>تفقيس (بيضة)</th>
+                  <th>القطيع البياض</th>
                   <th>المساحة</th>
-                  <th>العلف</th>
-                  <th>البيض</th>
-                  <th>المداخيل</th>
-                  <th>الربح</th>
-                  <th>تراكمي</th>
+                  <th>العلف (بياض)</th>
+                  <th>ت. التربية</th>
+                  <th>البيض المنتج</th>
+                  <th>بيع الذكور</th>
+                  <th>إجمالي الدخل</th>
+                  <th>صافي الشهر</th>
+                  <th>التراكمي</th>
+                  <th>أهم الأحداث والمراحل</th>
                 </tr>
               </thead>
               <tbody>
-                {planData.map((m, i) => (
-                  <tr key={m.month}>
-                    <td className="font-bold">شهر {m.month}</td>
+                {months.map((m, i) => (
+                  <tr
+                    key={m.month}
+                    className={cn(
+                      m.expectedProfit >= targetMonthlyProfit ? 'bg-emerald-50/70' : m.expectedProfit < 0 ? 'bg-red-50/30' : ''
+                    )}
+                  >
+                    <td className="font-bold whitespace-nowrap">شهر {m.month}</td>
                     <td>
-                      <input type="number" value={m.addedHens} onChange={e => updateMonth(i, 'addedHens', +e.target.value)} className="w-16 px-2 py-1 border border-slate-300 rounded text-center text-sm" />
+                      <input
+                        type="number"
+                        value={m.addedHens}
+                        onChange={e => updateManualRow(i, 'addedHens', +e.target.value)}
+                        className="w-14 px-1.5 py-1 border border-slate-300 rounded text-center font-bold"
+                      />
                     </td>
-                    <td>
-                      <select value={m.source} onChange={e => updateMonth(i, 'source', e.target.value)} className="px-2 py-1 border border-slate-300 rounded text-xs">
-                        <option value="purchased">شراء</option>
-                        <option value="incubator">فقاسة</option>
-                      </select>
+                    <td className="font-bold text-blue-700">
+                      {m.incubatorEggsUsed && m.incubatorEggsUsed > 0 ? `${m.incubatorEggsUsed} 🥚` : '—'}
                     </td>
-                    <td className="text-red-500">{m.estimatedMortality}</td>
-                    <td className="font-bold text-blue-600">{m.netActiveHens}</td>
-                    <td>{m.requiredSpaceM2} م²</td>
-                    <td>{m.monthlyFeedKg.toFixed(0)} كغ</td>
+                    <td className="font-black text-blue-800">{m.netActiveHens}</td>
+                    <td className="whitespace-nowrap">{m.requiredSpaceM2} م²</td>
+                    <td className="whitespace-nowrap">{m.monthlyFeedKg.toFixed(0)} كغ</td>
+                    <td className="text-amber-700 whitespace-nowrap">
+                      {m.rearingCost && m.rearingCost > 0 ? formatCurrency(m.rearingCost, sym) : '—'}
+                    </td>
                     <td>{formatNumber(m.expectedEggProduction)}</td>
-                    <td className="text-emerald-600">{formatCurrency(m.expectedRevenue, sym)}</td>
-                    <td className={cn('font-medium', m.expectedProfit >= 0 ? 'text-emerald-600' : 'text-red-600')}>{formatCurrency(m.expectedProfit, sym)}</td>
-                    <td className={cn('font-bold', m.cumulativeProfit >= 0 ? 'text-blue-600' : 'text-red-600')}>{formatCurrency(m.cumulativeProfit, sym)}</td>
+                    <td className="text-emerald-700 font-medium whitespace-nowrap">
+                      {m.maleSalesRevenue && m.maleSalesRevenue > 0 ? formatCurrency(m.maleSalesRevenue, sym) : '—'}
+                    </td>
+                    <td className="text-emerald-700 font-bold whitespace-nowrap">{formatCurrency(m.expectedRevenue, sym)}</td>
+                    <td
+                      className={cn(
+                        'font-black whitespace-nowrap',
+                        m.expectedProfit >= targetMonthlyProfit
+                          ? 'text-emerald-700'
+                          : m.expectedProfit >= 0
+                          ? 'text-slate-700'
+                          : 'text-red-600'
+                      )}
+                    >
+                      {formatCurrency(m.expectedProfit, sym)}
+                    </td>
+                    <td
+                      className={cn(
+                        'font-bold whitespace-nowrap',
+                        m.cumulativeProfit >= 0 ? 'text-blue-700' : 'text-red-600'
+                      )}
+                    >
+                      {formatCurrency(m.cumulativeProfit, sym)}
+                    </td>
+                    <td className="text-xs text-slate-600 min-w-[200px]">{m.milestoneNote || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -291,6 +775,16 @@ export default function ExpansionPage() {
           </Card>
         </>
       )}
+
+      <ConfirmDialog
+        isOpen={deletePlanId !== null}
+        onClose={() => setDeletePlanId(null)}
+        onConfirm={confirmDeletePlan}
+        title="حذف خطة التوسع"
+        message="هل أنت متأكد من حذف هذه الخطة المحفوظة من قاعدة البيانات؟"
+        confirmLabel="حذف"
+        confirmColor="red"
+      />
     </AppShell>
   );
 }

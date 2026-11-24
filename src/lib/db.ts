@@ -13,6 +13,8 @@ import type {
   FlockGroup,
   Investor,
   ValuationItem,
+  ExpansionPlan,
+  ExpansionPlanMonth,
 } from './types';
 import { db as localDexieDb } from './db-local';
 
@@ -180,8 +182,8 @@ export const db = {
     clear: async () => {},
     count: async () => 0,
   }),
-  expansionPlans: localDexieDb.expansionPlans,
-  expansionPlanMonths: localDexieDb.expansionPlanMonths,
+  expansionPlans: createTableHandler<ExpansionPlan>('expansionPlans', localDexieDb.expansionPlans),
+  expansionPlanMonths: createTableHandler<ExpansionPlanMonth>('expansionPlanMonths', localDexieDb.expansionPlanMonths),
   alerts: localDexieDb.alerts,
 };
 
