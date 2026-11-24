@@ -179,6 +179,43 @@ export interface Expense {
   notes?: string;
 }
 
+// === المستثمرون وتقييم المشروع ===
+export interface Investor {
+  id?: number;
+  name: string;
+  phone?: string;
+  email?: string;
+  investedAmount: number;
+  ownershipShare: number; // نسبة الحصة %
+  entryDate: string;
+  totalDistributed: number; // إجمالي الأرباح الموزعة
+  status: 'active' | 'exited';
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type ValuationCategory = 'equipment' | 'livestock' | 'realestate' | 'cash' | 'other';
+
+export interface ValuationItem {
+  id?: number;
+  category: ValuationCategory;
+  name: string;
+  quantity: number;
+  unitValue: number;
+  totalValue: number;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export const VALUATION_CATEGORY_LABELS: Record<ValuationCategory, string> = {
+  equipment: 'معدات وتجهيزات (فقاسات، معالف، سقايات)',
+  livestock: 'ثروة حيوانية (دجاج بياض، عتوكة، ديوك)',
+  realestate: 'بنية تحتية وعنابر وبناء',
+  cash: 'سيولة نقدية ومخزون أعلاف وبيض',
+  other: 'أصول أخرى',
+};
+
 // === مجموعات القطيع العام ===
 export type FlockCategory = 'layers' | 'roosters' | 'pullets' | 'chicks' | 'broilers';
 

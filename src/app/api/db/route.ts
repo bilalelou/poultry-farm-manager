@@ -90,20 +90,76 @@ export async function GET(request: Request) {
                 notes: 'دفعة ATK-2611 (20 إناث بياضة و 2 ديوك)',
               },
               {
-                name: 'ديوك التخصيب الرئيسية',
+                name: 'ديوك المزرعة (فروج)',
                 category: 'roosters',
                 breed: 'بلدي مميز',
-                headCount: 2,
-                malesCount: 2,
+                headCount: 5,
+                malesCount: 5,
                 femalesCount: 0,
                 ageWeeks: 32,
                 housing: 'عنبر 1 - قسم الذكور',
                 healthStatus: 'ممتازة',
-                notes: 'مخصصة لتخصيب البيض لدفعة الفقاسة',
+                notes: '5 ديوك/فروج مخصصة للتخصيب والتلقيح',
               },
             ],
           });
           items = await prisma.flockGroup.findMany({ orderBy: { createdAt: 'desc' } });
+        }
+        return NextResponse.json(items);
+      }
+      case 'investors': {
+        const items = await prisma.investor.findMany({ orderBy: { createdAt: 'desc' } });
+        return NextResponse.json(items);
+      }
+      case 'valuationItems': {
+        let items = await prisma.valuationItem.findMany({ orderBy: { id: 'asc' } });
+        if (items.length === 0) {
+          // بذر الأصول التقديرية الحالية لمزرعتك
+          await prisma.valuationItem.createMany({
+            data: [
+              {
+                category: 'equipment',
+                name: 'فقاسة بيض أوتوماتيكية سعة 100+ بيضة',
+                quantity: 1,
+                unitValue: 4100,
+                totalValue: 4100,
+                notes: 'شراء جديد كامل التجهيز والتحكم الرقمي',
+              },
+              {
+                category: 'livestock',
+                name: 'قطيع دجاج بياض منتج (10 دجاجات)',
+                quantity: 10,
+                unitValue: 80,
+                totalValue: 800,
+                notes: 'دجاج بلدي كامل الإنتاجية في قمة العطاء',
+              },
+              {
+                category: 'livestock',
+                name: 'قطيع عتوكة قيد التجهيز (22 حبة)',
+                quantity: 22,
+                unitValue: 45,
+                totalValue: 990,
+                notes: 'دفعة ATK-2611 (20 إناث + 2 ديوك)',
+              },
+              {
+                category: 'livestock',
+                name: 'ديوك تخصيب وفروج (5 رؤوس)',
+                quantity: 5,
+                unitValue: 60,
+                totalValue: 300,
+                notes: 'سلالة بلدية مميزة للتخصيب',
+              },
+              {
+                category: 'equipment',
+                name: 'سقايات ومعالف وشبكات تدفئة وإضاءة',
+                quantity: 1,
+                unitValue: 650,
+                totalValue: 650,
+                notes: 'تجهيزات العنابر والحظائر',
+              },
+            ],
+          });
+          items = await prisma.valuationItem.findMany({ orderBy: { id: 'asc' } });
         }
         return NextResponse.json(items);
       }
@@ -163,6 +219,14 @@ export async function POST(request: Request) {
         const item = await prisma.flockGroup.create({ data: body });
         return NextResponse.json(item);
       }
+      case 'investors': {
+        const item = await prisma.investor.create({ data: body });
+        return NextResponse.json(item);
+      }
+      case 'valuationItems': {
+        const item = await prisma.valuationItem.create({ data: body });
+        return NextResponse.json(item);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
@@ -207,6 +271,14 @@ export async function PUT(request: Request) {
         const updated = await prisma.flockGroup.update({ where: { id }, data: body });
         return NextResponse.json(updated);
       }
+      case 'investors': {
+        const updated = await prisma.investor.update({ where: { id }, data: body });
+        return NextResponse.json(updated);
+      }
+      case 'valuationItems': {
+        const updated = await prisma.valuationItem.update({ where: { id }, data: body });
+        return NextResponse.json(updated);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
@@ -249,6 +321,14 @@ export async function DELETE(request: Request) {
       }
       case 'flockGroups': {
         await prisma.flockGroup.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'investors': {
+        await prisma.investor.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'valuationItems': {
+        await prisma.valuationItem.delete({ where: { id } });
         return NextResponse.json({ success: true });
       }
       default:

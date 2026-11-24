@@ -13,6 +13,7 @@ import {
   Target,
   Settings,
   Users,
+  Briefcase,
   Menu,
   X,
   ChevronLeft,
@@ -23,6 +24,7 @@ import { cn } from '@/lib/utils';
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'لوحة القيادة', icon: LayoutDashboard },
   { href: '/flock', label: 'القطيع العام', icon: Users },
+  { href: '/investors', label: 'المستثمرون وقيمة المشروع', icon: Briefcase },
   { href: '/incubator', label: 'الفقاسة', icon: Egg },
   { href: '/rearing', label: 'التربية', icon: TrendingUp },
   { href: '/production', label: 'الإنتاج والمبيعات', icon: CalendarDays },

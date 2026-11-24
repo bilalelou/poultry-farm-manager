@@ -11,6 +11,8 @@ import type {
   Sale,
   Expense,
   FlockGroup,
+  Investor,
+  ValuationItem,
 } from './types';
 import { db as localDexieDb } from './db-local';
 
@@ -152,6 +154,24 @@ export const db = {
   sales: createTableHandler<Sale>('sales', localDexieDb.sales),
   expenses: createTableHandler<Expense>('expenses', localDexieDb.expenses),
   flockGroups: createTableHandler<FlockGroup>('flockGroups', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
+  investors: createTableHandler<Investor>('investors', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
+  valuationItems: createTableHandler<ValuationItem>('valuationItems', {
     toArray: async () => [],
     get: async () => undefined,
     add: async () => 1,

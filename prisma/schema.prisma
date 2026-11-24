@@ -182,3 +182,29 @@ model FlockGroup {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model Investor {
+  id               Int      @id @default(autoincrement())
+  name             String   // اسم المستثمر / الشريك
+  phone            String?  // رقم الهاتف
+  email            String?  // البريد
+  investedAmount   Float    // المبلغ المستثمر (د.م)
+  ownershipShare   Float    // نسبة الحصة في المشروع (%)
+  entryDate        String   // تاريخ الدخول / الاستثمار
+  totalDistributed Float    @default(0) // إجمالي الأرباح الموزعة عليه حتى الآن
+  status           String   @default("active") // active | exited
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model ValuationItem {
+  id          Int      @id @default(autoincrement())
+  category    String   // equipment (معدات والآت) | livestock (ثروة حيوانية) | realestate (أراضي وبناء) | cash (سيولة) | other
+  name        String   // اسم الأصل (مثلاً: فقاسة أوتوماتيكية، قطيع البياض، حظائر...)
+  quantity    Float    @default(1)
+  unitValue   Float    // القيمة التقديرية للوحدة
+  totalValue  Float    // إجمالي القيمة
+  notes       String?
+  updatedAt   DateTime @updatedAt
+}
