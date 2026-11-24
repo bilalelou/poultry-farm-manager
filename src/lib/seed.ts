@@ -95,8 +95,10 @@ export async function seedDatabase(forceReset: boolean = false) {
     startDate: '2026-10-20', // عمرها حالياً حوالي شهر وتستعد للإنتاج
     initialChickCount: 36,
     initialCostPerChick: 40, // 40 درهم للعتوكة
+    currentHealthyCount: 18, // العدد السليم المتبقي
+    mortalityCount: 14,      // عدد النفوق
     status: 'rearing',
-    notes: 'شراء 36 عتوكة بـ 40 درهم للحبة، نفق منها 14 وتبقى 18 حبة ستدخل الإنتاج خلال شهر',
+    notes: 'شراء 36 عتوكة بـ 40 درهم للحبة، نفق منها 14 وتبقى 18 حبة سليمة ستدخل الإنتاج قريباً',
     createdAt: '2026-10-20',
   };
 

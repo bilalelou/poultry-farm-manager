@@ -28,6 +28,8 @@ export default function RearingListPage() {
     startDate: todayISO(),
     initialChickCount: 36,
     initialCostPerChick: 40,
+    currentHealthyCount: 18,
+    mortalityCount: 14,
     status: 'rearing' as RearingStatus,
     notes: '',
   });
@@ -55,6 +57,8 @@ export default function RearingListPage() {
       startDate: todayISO(),
       initialChickCount: 30,
       initialCostPerChick: 35,
+      currentHealthyCount: 30,
+      mortalityCount: 0,
       status: 'rearing',
       notes: '',
     });
@@ -65,35 +69,65 @@ export default function RearingListPage() {
     e.preventDefault();
     e.stopPropagation();
     setEditingBatchId(batch.id || null);
+    const initial = batch.initialChickCount || 0;
+    const mortality = batch.mortalityCount ?? 0;
+    const healthy = batch.currentHealthyCount ?? (initial - mortality);
     setForm({
       batchCode: batch.batchCode,
       startDate: batch.startDate,
-      initialChickCount: batch.initialChickCount,
+      initialChickCount: initial,
       initialCostPerChick: batch.initialCostPerChick,
+      currentHealthyCount: healthy,
+      mortalityCount: mortality,
       status: batch.status,
       notes: batch.notes || '',
     });
     setShowForm(true);
   }
 
+  // تحديث الحساب التلقائي للعدد السليم عند تغيير العدد الابتدائي أو النفوق
+  function handleInitialCountChange(val: number) {
+    setForm(prev => {
+      const newInitial = Math.max(0, val);
+      const newMortality = prev.mortalityCount;
+      const newHealthy = Math.max(0, newInitial - newMortality);
+      return { ...prev, initialChickCount: newInitial, currentHealthyCount: newHealthy };
+    });
+  }
+
+  function handleMortalityChange(val: number) {
+    setForm(prev => {
+      const newMortality = Math.max(0, val);
+      const newHealthy = Math.max(0, prev.initialChickCount - newMortality);
+      return { ...prev, mortalityCount: newMortality, currentHealthyCount: newHealthy };
+    });
+  }
+
+  function handleHealthyChange(val: number) {
+    setForm(prev => {
+      const newHealthy = Math.max(0, val);
+      const newMortality = Math.max(0, prev.initialChickCount - newHealthy);
+      return { ...prev, currentHealthyCount: newHealthy, mortalityCount: newMortality };
+    });
+  }
+
   async function saveBatch() {
+    const dataToSave = {
+      batchCode: form.batchCode,
+      startDate: form.startDate,
+      initialChickCount: Number(form.initialChickCount),
+      initialCostPerChick: Number(form.initialCostPerChick),
+      currentHealthyCount: Number(form.currentHealthyCount),
+      mortalityCount: Number(form.mortalityCount),
+      status: form.status,
+      notes: form.notes,
+    };
+
     if (editingBatchId) {
-      await db.rearingBatches.update(editingBatchId, {
-        batchCode: form.batchCode,
-        startDate: form.startDate,
-        initialChickCount: Number(form.initialChickCount),
-        initialCostPerChick: Number(form.initialCostPerChick),
-        status: form.status,
-        notes: form.notes,
-      });
+      await db.rearingBatches.update(editingBatchId, dataToSave);
     } else {
       await db.rearingBatches.add({
-        batchCode: form.batchCode,
-        startDate: form.startDate,
-        initialChickCount: Number(form.initialChickCount),
-        initialCostPerChick: Number(form.initialCostPerChick),
-        status: form.status,
-        notes: form.notes,
+        ...dataToSave,
         createdAt: todayISO(),
       });
     }
@@ -178,6 +212,14 @@ export default function RearingListPage() {
                       <div className="space-y-1.5 text-sm text-slate-600">
                         <div className="flex justify-between"><span>📅 تاريخ البدء</span><span className="font-medium">{formatDate(batch.startDate)}</span></div>
                         <div className="flex justify-between"><span>🐥 العدد الابتدائي</span><span className="font-medium">{batch.initialChickCount} طير</span></div>
+                        <div className="flex justify-between text-red-600">
+                          <span>💀 عدد النفوق</span>
+                          <span className="font-bold">{batch.mortalityCount ?? 0} طير</span>
+                        </div>
+                        <div className="flex justify-between bg-emerald-50 text-emerald-800 p-2 rounded-lg font-bold border border-emerald-200">
+                          <span>✨ العدد السليم (المتبقي)</span>
+                          <span className="text-base">{batch.currentHealthyCount ?? (batch.initialChickCount - (batch.mortalityCount ?? 0))} طير</span>
+                        </div>
                         <div className="flex justify-between"><span>💰 تكلفة الطير الأولية</span><span className="font-medium">{batch.initialCostPerChick} د.م</span></div>
                         {batch.notes && <p className="text-xs text-slate-400 mt-2 line-clamp-1">{batch.notes}</p>}
                       </div>
@@ -226,12 +268,22 @@ export default function RearingListPage() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">العدد الابتدائي (طيور / كتاكيت)</label>
-              <input type="number" value={form.initialChickCount} onChange={e => setForm(p => ({ ...p, initialChickCount: +e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+              <label className="block text-sm font-medium text-slate-700 mb-1">العدد الابتدائي (المشترى / الموضوع)</label>
+              <input type="number" value={form.initialChickCount} onChange={e => handleInitialCountChange(+e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">تكلفة الطير الأولية (د.م)</label>
               <input type="number" step="0.5" value={form.initialCostPerChick} onChange={e => setForm(p => ({ ...p, initialCostPerChick: +e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+            <div>
+              <label className="block text-sm font-medium text-red-600 mb-1">💀 عدد النفوق (الميت / التالف)</label>
+              <input type="number" min="0" value={form.mortalityCount} onChange={e => handleMortalityChange(+e.target.value)} className="w-full px-3 py-2 border border-red-300 rounded-lg text-sm bg-white font-bold text-red-600" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-emerald-700 mb-1">✨ العدد السليم (المتبقي حالياً)</label>
+              <input type="number" min="0" value={form.currentHealthyCount} onChange={e => handleHealthyChange(+e.target.value)} className="w-full px-3 py-2 border border-emerald-300 rounded-lg text-sm bg-emerald-50 font-bold text-emerald-700" />
             </div>
           </div>
           <div>

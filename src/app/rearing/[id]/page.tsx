@@ -95,7 +95,12 @@ export default function RearingDetailPage({ params }: { params: Promise<{ id: st
   const totalRearingCost = (batch.initialChickCount * batch.initialCostPerChick) + logs.reduce((s, l) => s + l.totalWeeklyCost, 0);
   const totalMalesSaleValue = logs.reduce((s, l) => s + l.malesSaleValue, 0);
   const totalMalesSold = logs.reduce((s, l) => s + l.malesSold, 0);
-  const finalRemaining = logs.length > 0 ? logs[logs.length - 1].remainingCount : batch.initialChickCount;
+  const finalRemaining = logs.length > 0
+    ? logs[logs.length - 1].remainingCount
+    : (batch.currentHealthyCount !== undefined ? batch.currentHealthyCount : (batch.initialChickCount - (batch.mortalityCount || 0)));
+  const totalMortality = logs.length > 0
+    ? logs.reduce((s, l) => s + l.weeklyMortality, 0)
+    : (batch.mortalityCount ?? (batch.initialChickCount - finalRemaining));
   const netCostPerHen = finalRemaining > 0 ? (totalRearingCost - totalMalesSaleValue) / finalRemaining : 0;
   const marketPrice = settings?.marketReadyHenPrice || 80;
   const savings = marketPrice - netCostPerHen;
@@ -119,11 +124,15 @@ export default function RearingDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Batch Info */}
       <Card className="p-5 mb-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-          <div><p className="text-xs text-slate-500">العدد الابتدائي</p><p className="text-xl font-bold">{batch.initialChickCount}</p></div>
-          <div><p className="text-xs text-slate-500">المتبقي حالياً</p><p className="text-xl font-bold text-blue-600">{finalRemaining}</p></div>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+          <div><p className="text-xs text-slate-500">العدد الابتدائي</p><p className="text-xl font-bold">{batch.initialChickCount} طير</p></div>
+          <div><p className="text-xs text-red-500">إجمالي النفوق</p><p className="text-xl font-bold text-red-600">{totalMortality} طير</p></div>
+          <div className="bg-emerald-50 rounded-xl p-2 border border-emerald-200">
+            <p className="text-xs text-emerald-700 font-medium">العدد السليم (المتبقي)</p>
+            <p className="text-2xl font-black text-emerald-700">{finalRemaining} طير</p>
+          </div>
           <div><p className="text-xs text-slate-500">الأسبوع الحالي</p><p className="text-xl font-bold">{Math.min(getRearingWeek(batch.startDate), 20)} / 20</p></div>
-          <div><p className="text-xs text-slate-500">الذكور المباعة</p><p className="text-xl font-bold text-emerald-600">{totalMalesSold}</p></div>
+          <div><p className="text-xs text-slate-500">الذكور المباعة</p><p className="text-xl font-bold text-blue-600">{totalMalesSold}</p></div>
         </div>
       </Card>
 

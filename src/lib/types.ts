@@ -93,6 +93,8 @@ export interface RearingBatch {
   startDate: string;
   initialChickCount: number;
   initialCostPerChick: number;
+  currentHealthyCount?: number; // العدد السليم / المتبقي حالياً
+  mortalityCount?: number;      // عدد النفوق / الهالك
   status: RearingStatus;
   notes?: string;
   createdAt: string;

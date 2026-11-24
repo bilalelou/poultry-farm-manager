@@ -130,6 +130,7 @@ export function getStatusColor(actual: number, target: number, isLowerBetter: bo
  * إنشاء رمز دفعة فريد
  */
 export function generateBatchCode(prefix: string = 'B'): string {
+  if (typeof window === 'undefined') return `${prefix}000000-00`;
   const now = new Date();
   const year = now.getFullYear().toString().slice(-2);
   const month = (now.getMonth() + 1).toString().padStart(2, '0');
