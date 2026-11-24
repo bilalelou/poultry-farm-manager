@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import AppShell from '@/components/AppShell';
 import { Card, Badge, Modal, LoadingSpinner, ConfirmDialog } from '@/components/ui';
-import { db, getSettings } from '@/lib/db';
+import { db, getSettings, updateSettings } from '@/lib/db';
 import type { DailyProduction, Sale, Settings, SaleType } from '@/lib/types';
 import { SALE_TYPE_LABELS } from '@/lib/types';
 import { formatCurrency, formatPercent, formatNumber, formatDate, todayISO, getMonthKey, ARABIC_MONTHS, cn } from '@/lib/utils';
@@ -43,6 +43,11 @@ export default function ProductionPage() {
   const [quickSellUnitType, setQuickSellUnitType] = useState<'unit' | 'tray'>('tray');
   const [quickSellUnitPrice, setQuickSellUnitPrice] = useState(45);
   const [quickSellBuyer, setQuickSellBuyer] = useState('');
+
+  // Edit Selling Prices Modal state
+  const [showPriceModal, setShowPriceModal] = useState(false);
+  const [editingEggPrice, setEditingEggPrice] = useState(1.5);
+  const [editingTrayPrice, setEditingTrayPrice] = useState(45);
 
   useEffect(() => { loadData(); }, []);
 
@@ -190,6 +195,28 @@ export default function ProductionPage() {
     loadData();
   }
 
+  // --- Change Selling Prices ---
+  function openPriceModal() {
+    setEditingEggPrice(settings?.sellingPrices.egg || 1.5);
+    setEditingTrayPrice(settings?.sellingPrices.tray || 45);
+    setShowPriceModal(true);
+  }
+
+  async function saveNewPrices() {
+    if (settings) {
+      const updatedSellingPrices = {
+        ...settings.sellingPrices,
+        egg: Number(editingEggPrice),
+        tray: Number(editingTrayPrice),
+      };
+      await updateSettings({
+        sellingPrices: updatedSellingPrices,
+      });
+      setShowPriceModal(false);
+      loadData();
+    }
+  }
+
   if (loading) return <AppShell><LoadingSpinner /></AppShell>;
 
   const sym = settings?.currencySymbol || 'د.م';
@@ -245,7 +272,16 @@ export default function ProductionPage() {
             <div className="h-10 w-[1px] bg-slate-200 hidden md:block" />
 
             <div>
-              <p className="text-xs text-slate-500 font-medium">سعر البيع المعتمد</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs text-slate-500 font-medium">سعر البيع المعتمد</p>
+                <button
+                  onClick={openPriceModal}
+                  title="تغيير سعر البيع"
+                  className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-md transition"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="text-lg font-bold text-slate-800">{formatCurrency(unitEggPrice, sym)}</span>
                 <span className="text-xs text-slate-400">للبيضة</span>
@@ -736,6 +772,49 @@ export default function ProductionPage() {
               className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition shadow-md"
             >
               تأكيد وحفظ البيع ✓
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 🏷️ Modal تغيير أسعار البيع 🏷️ */}
+      <Modal isOpen={showPriceModal} onClose={() => setShowPriceModal(false)} title="تعديل أسعار بيع البيض الافتراضية" size="sm">
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500">
+            تعديل الأسعار هنا سيحدث الأسعار الافتراضية للبيع في النظام وأسعار الحساب التقديري للمخزون.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">سعر البيضة الواحدة ({sym})</label>
+            <input
+              type="number"
+              step="0.1"
+              value={editingEggPrice}
+              onChange={e => setEditingEggPrice(+e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">سعر الصينية (30 بيضة) ({sym})</label>
+            <input
+              type="number"
+              step="0.5"
+              value={editingTrayPrice}
+              onChange={e => setEditingTrayPrice(+e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+            />
+          </div>
+          <div className="flex gap-3 pt-2">
+            <button
+              onClick={() => setShowPriceModal(false)}
+              className="flex-1 py-2.5 border border-slate-300 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition"
+            >
+              إلغاء
+            </button>
+            <button
+              onClick={saveNewPrices}
+              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition shadow-sm"
+            >
+              حفظ الأسعار
             </button>
           </div>
         </div>
