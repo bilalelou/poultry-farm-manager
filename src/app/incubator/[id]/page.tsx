@@ -1,0 +1,316 @@
+'use client';
+
+import { useState, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation';
+import AppShell from '@/components/AppShell';
+import { Card, Badge, Modal, LoadingSpinner, ConfirmDialog } from '@/components/ui';
+import { db, getSettings } from '@/lib/db';
+import type { IncubatorBatch, Settings } from '@/lib/types';
+import { BATCH_STATUS_LABELS, INCUBATOR_STANDARDS } from '@/lib/types';
+import { formatCurrency, formatDate, formatPercent, getIncubatorDay, getIncubatorPhase, addDays, generateBatchCode, todayISO, cn } from '@/lib/utils';
+import { ArrowRight, Thermometer, Droplets, RotateCcw, Eye, Calendar, ChevronLeft, AlertTriangle, CheckCircle2, Truck } from 'lucide-react';
+
+export default function IncubatorDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const router = useRouter();
+  const [batch, setBatch] = useState<IncubatorBatch | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [showCandling, setShowCandling] = useState(false);
+  const [showHatch, setShowHatch] = useState(false);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [candlingForm, setCandlingForm] = useState({ fertilizedCount: 0 });
+  const [hatchForm, setHatchForm] = useState({ hatchedChicks: 0, spoiledEggs: 0 });
+
+  useEffect(() => { loadData(); }, [id]);
+
+  async function loadData() {
+    const s = await getSettings();
+    setSettings(s);
+    const b = await db.incubatorBatches.get(Number(id));
+    if (b) {
+      setBatch(b);
+      setCandlingForm({ fertilizedCount: b.fertilizedCount || 0 });
+      setHatchForm({ hatchedChicks: b.hatchedChicks || 0, spoiledEggs: b.spoiledEggs || 0 });
+    }
+    setLoading(false);
+  }
+
+  async function saveCandling() {
+    if (!batch?.id) return;
+    const fertilityRate = (candlingForm.fertilizedCount / batch.eggCount) * 100;
+    await db.incubatorBatches.update(batch.id, {
+      fertilizedCount: candlingForm.fertilizedCount,
+      fertilityRate: Math.round(fertilityRate * 10) / 10,
+    });
+    setShowCandling(false);
+    loadData();
+  }
+
+  async function saveHatch() {
+    if (!batch?.id) return;
+    const fertilized = batch.fertilizedCount || batch.eggCount;
+    const hatchRate = (hatchForm.hatchedChicks / fertilized) * 100;
+    const totalCost = (batch.eggCost || 0) + batch.electricityCost + batch.cleaningCost;
+    const costPerChick = hatchForm.hatchedChicks > 0 ? totalCost / hatchForm.hatchedChicks : 0;
+    await db.incubatorBatches.update(batch.id, {
+      hatchedChicks: hatchForm.hatchedChicks,
+      spoiledEggs: hatchForm.spoiledEggs,
+      hatchRate: Math.round(hatchRate * 10) / 10,
+      totalCost,
+      costPerChick: Math.round(costPerChick * 100) / 100,
+      status: 'hatched',
+    });
+    setShowHatch(false);
+    loadData();
+  }
+
+  async function transferToRearing() {
+    if (!batch?.id || !batch.hatchedChicks) return;
+    const rearingId = await db.rearingBatches.add({
+      batchCode: generateBatchCode('T'),
+      incubatorBatchId: batch.id,
+      startDate: todayISO(),
+      initialChickCount: batch.hatchedChicks,
+      initialCostPerChick: batch.costPerChick || 0,
+      status: 'rearing',
+      createdAt: todayISO(),
+    });
+    await db.incubatorBatches.update(batch.id, {
+      status: 'transferred',
+      linkedRearingBatchId: rearingId as number,
+    });
+    setShowTransfer(false);
+    router.push('/rearing');
+  }
+
+  if (loading || !batch) return <AppShell><LoadingSpinner /></AppShell>;
+
+  const sym = settings?.currencySymbol || 'د.م';
+  const day = getIncubatorDay(batch.startDate);
+  const phase = getIncubatorPhase(day);
+  const totalCost = (batch.eggCost || 0) + batch.electricityCost + batch.cleaningCost;
+  const day7 = addDays(batch.startDate, 6);
+  const day18 = addDays(batch.startDate, 17);
+  const day21 = addDays(batch.startDate, 20);
+
+  const phaseInfo = day <= 18 ? INCUBATOR_STANDARDS.phase1 : INCUBATOR_STANDARDS.phase2;
+
+  return (
+    <AppShell>
+      {/* Back button & Header */}
+      <button onClick={() => router.push('/incubator')} className="flex items-center gap-1 text-blue-600 hover:text-blue-800 mb-4 text-sm font-medium">
+        <ArrowRight className="w-4 h-4" />
+        العودة للقائمة
+      </button>
+
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <h1 className="text-2xl font-bold text-slate-800">الدفعة {batch.batchCode}</h1>
+        <Badge color={batch.status === 'incubating' ? 'amber' : batch.status === 'hatched' ? 'green' : 'blue'}>
+          {BATCH_STATUS_LABELS[batch.status]}
+        </Badge>
+      </div>
+
+      {/* Timeline */}
+      {batch.status === 'incubating' && day <= 21 && (
+        <Card className="p-5 mb-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-bold text-slate-800">الشريط الزمني</h2>
+            <span className="text-lg font-bold text-blue-600">اليوم {day} / 21</span>
+          </div>
+          {/* Visual timeline */}
+          <div className="relative mb-4">
+            <div className="w-full bg-slate-100 rounded-full h-4">
+              <div
+                className={cn('h-4 rounded-full transition-all', day <= 18 ? 'bg-amber-500' : 'bg-emerald-500')}
+                style={{ width: `${Math.min((day / 21) * 100, 100)}%` }}
+              />
+            </div>
+            {/* Markers */}
+            <div className="flex justify-between mt-2 text-xs text-slate-500">
+              <span>اليوم 1</span>
+              <span className={cn(day >= 7 ? 'text-blue-600 font-bold' : '')}>فحص (7)</span>
+              <span className={cn(day >= 18 ? 'text-amber-600 font-bold' : '')}>إيقاف (18)</span>
+              <span className={cn(day >= 21 ? 'text-emerald-600 font-bold' : '')}>فقس (21)</span>
+            </div>
+          </div>
+          <div className="text-center text-lg font-bold text-slate-700">
+            ⏳ {Math.max(0, 21 - day)} يوم متبقي للفقس
+          </div>
+        </Card>
+      )}
+
+      {/* Current Phase Info */}
+      {batch.status === 'incubating' && day <= 21 && (
+        <Card className="p-5 mb-6">
+          <h2 className="font-bold text-slate-800 mb-3">
+            {day <= 18 ? 'المرحلة الأولى (الأيام 1-18)' : 'مرحلة التفقيس (الأيام 19-21)'}
+          </h2>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-red-50 rounded-xl p-4 text-center">
+              <Thermometer className="w-6 h-6 text-red-500 mx-auto mb-1" />
+              <p className="text-sm text-slate-600">الحرارة</p>
+              <p className="text-lg font-bold text-red-700">
+                {`${phaseInfo.temperature.min}°C - ${phaseInfo.temperature.max}°C`}
+              </p>
+            </div>
+            <div className="bg-blue-50 rounded-xl p-4 text-center">
+              <Droplets className="w-6 h-6 text-blue-500 mx-auto mb-1" />
+              <p className="text-sm text-slate-600">الرطوبة</p>
+              <p className="text-lg font-bold text-blue-700">{phaseInfo.humidity.min}% - {phaseInfo.humidity.max}%</p>
+            </div>
+            <div className={cn('rounded-xl p-4 text-center', phaseInfo.turning ? 'bg-green-50' : 'bg-orange-50')}>
+              <RotateCcw className={cn('w-6 h-6 mx-auto mb-1', phaseInfo.turning ? 'text-green-500' : 'text-orange-500')} />
+              <p className="text-sm text-slate-600">التقليب</p>
+              <p className={cn('text-lg font-bold', phaseInfo.turning ? 'text-green-700' : 'text-orange-700')}>
+                {phaseInfo.turning ? 'مفعل ✓' : 'متوقف ✗'}
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Checkpoints */}
+      <div className="grid md:grid-cols-3 gap-4 mb-6">
+        {/* Day 7 - Candling */}
+        <Card className={cn('p-4 border-2', batch.fertilizedCount !== undefined ? 'border-green-200 bg-green-50/50' : day >= 7 ? 'border-blue-300 bg-blue-50/50' : 'border-slate-200')}>
+          <div className="flex items-center gap-2 mb-2">
+            <Eye className={cn('w-5 h-5', batch.fertilizedCount !== undefined ? 'text-green-600' : 'text-blue-600')} />
+            <h3 className="font-bold text-slate-800">الفحص الضوئي (اليوم 7)</h3>
+          </div>
+          <p className="text-xs text-slate-500 mb-2">📅 {formatDate(day7)}</p>
+          {batch.fertilizedCount !== undefined ? (
+            <div>
+              <p className="text-sm">مخصب: <span className="font-bold text-emerald-700">{batch.fertilizedCount}</span> / {batch.eggCount}</p>
+              <p className="text-sm">نسبة الإخصاب: <span className="font-bold text-blue-700">{formatPercent(batch.fertilityRate || 0)}</span></p>
+            </div>
+          ) : (
+            <button onClick={() => setShowCandling(true)} disabled={day < 7 && batch.status === 'incubating'} className={cn('mt-2 w-full py-2 rounded-lg text-sm font-medium transition', day >= 7 || batch.status !== 'incubating' ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed')}>
+              تسجيل نتائج الفحص
+            </button>
+          )}
+        </Card>
+
+        {/* Day 18 - Stop Turning */}
+        <Card className={cn('p-4 border-2', day >= 18 || batch.status !== 'incubating' ? 'border-amber-200 bg-amber-50/50' : 'border-slate-200')}>
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle className="w-5 h-5 text-amber-600" />
+            <h3 className="font-bold text-slate-800">إيقاف التقليب (اليوم 18)</h3>
+          </div>
+          <p className="text-xs text-slate-500 mb-2">📅 {formatDate(day18)}</p>
+          <ul className="text-sm text-slate-600 space-y-1">
+            <li>✓ إيقاف التقليب</li>
+            <li>✓ رفع الرطوبة إلى 65-75%</li>
+            <li>✓ خفض الحرارة إلى 37.2-37.5°C</li>
+            <li>✓ نقل البيض لسلال الفقس</li>
+          </ul>
+        </Card>
+
+        {/* Day 21 - Hatch */}
+        <Card className={cn('p-4 border-2', batch.hatchedChicks !== undefined ? 'border-green-200 bg-green-50/50' : day >= 21 ? 'border-emerald-300 bg-emerald-50/50' : 'border-slate-200')}>
+          <div className="flex items-center gap-2 mb-2">
+            <CheckCircle2 className={cn('w-5 h-5', batch.hatchedChicks !== undefined ? 'text-green-600' : 'text-slate-400')} />
+            <h3 className="font-bold text-slate-800">الفقس (اليوم 21)</h3>
+          </div>
+          <p className="text-xs text-slate-500 mb-2">📅 {formatDate(day21)}</p>
+          {batch.hatchedChicks !== undefined ? (
+            <div>
+              <p className="text-sm">🐣 كتاكيت سليمة: <span className="font-bold text-emerald-700">{batch.hatchedChicks}</span></p>
+              <p className="text-sm">❌ بيض تالف: <span className="font-bold text-red-600">{batch.spoiledEggs}</span></p>
+              <p className="text-sm">نسبة الفقس: <span className="font-bold text-blue-700">{formatPercent(batch.hatchRate || 0)}</span></p>
+            </div>
+          ) : (
+            <button onClick={() => setShowHatch(true)} disabled={batch.status !== 'incubating' && batch.status !== 'hatched'} className={cn('mt-2 w-full py-2 rounded-lg text-sm font-medium transition', 'bg-emerald-600 text-white hover:bg-emerald-700')}>
+              تسجيل نتائج الفقس
+            </button>
+          )}
+        </Card>
+      </div>
+
+      {/* Financial Summary */}
+      <Card className="p-5 mb-6">
+        <h2 className="font-bold text-slate-800 mb-4">💰 الحساب المالي للدفعة</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-slate-50 rounded-lg p-3 text-center">
+            <p className="text-xs text-slate-500">تكلفة البيض</p>
+            <p className="text-lg font-bold text-slate-800">{formatCurrency(batch.eggCost || 0, sym)}</p>
+          </div>
+          <div className="bg-slate-50 rounded-lg p-3 text-center">
+            <p className="text-xs text-slate-500">الكهرباء</p>
+            <p className="text-lg font-bold text-slate-800">{formatCurrency(batch.electricityCost, sym)}</p>
+          </div>
+          <div className="bg-slate-50 rounded-lg p-3 text-center">
+            <p className="text-xs text-slate-500">التنظيف</p>
+            <p className="text-lg font-bold text-slate-800">{formatCurrency(batch.cleaningCost, sym)}</p>
+          </div>
+          <div className="bg-blue-50 rounded-lg p-3 text-center">
+            <p className="text-xs text-blue-600 font-medium">إجمالي التكلفة</p>
+            <p className="text-lg font-bold text-blue-800">{formatCurrency(totalCost, sym)}</p>
+          </div>
+        </div>
+        {batch.hatchedChicks && batch.hatchedChicks > 0 && (
+          <div className="mt-4 bg-emerald-50 rounded-lg p-4 text-center">
+            <p className="text-sm text-emerald-700">تكلفة الكتكوت الواحد في اليوم الأول</p>
+            <p className="text-2xl font-bold text-emerald-800">{formatCurrency(batch.costPerChick || totalCost / batch.hatchedChicks, sym)}</p>
+          </div>
+        )}
+      </Card>
+
+      {/* Transfer Button */}
+      {batch.status === 'hatched' && batch.hatchedChicks && (
+        <Card className="p-5 bg-gradient-to-l from-blue-50 to-white">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div>
+              <h3 className="font-bold text-slate-800">نقل الدفعة إلى مرحلة التربية</h3>
+              <p className="text-sm text-slate-500">{batch.hatchedChicks} كتكوت جاهز للنقل</p>
+            </div>
+            <button onClick={() => setShowTransfer(true)} className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition">
+              <Truck className="w-5 h-5" />
+              تحويل إلى التربية
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* Candling Modal */}
+      <Modal isOpen={showCandling} onClose={() => setShowCandling(false)} title="تسجيل نتائج الفحص الضوئي" size="sm">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">عدد البيض المخصب</label>
+            <input type="number" max={batch.eggCount} value={candlingForm.fertilizedCount} onChange={e => setCandlingForm({ fertilizedCount: +e.target.value })} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+            <p className="text-xs text-slate-400 mt-1">من أصل {batch.eggCount} بيضة</p>
+          </div>
+          <div className="bg-blue-50 rounded-lg p-3 text-center">
+            <span className="text-sm text-blue-700 font-bold">
+              نسبة الإخصاب: {batch.eggCount > 0 ? formatPercent((candlingForm.fertilizedCount / batch.eggCount) * 100) : '0%'}
+            </span>
+          </div>
+          <button onClick={saveCandling} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition">حفظ</button>
+        </div>
+      </Modal>
+
+      {/* Hatch Modal */}
+      <Modal isOpen={showHatch} onClose={() => setShowHatch(false)} title="تسجيل نتائج الفقس" size="sm">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">عدد الكتاكيت السليمة</label>
+            <input type="number" value={hatchForm.hatchedChicks} onChange={e => setHatchForm(p => ({ ...p, hatchedChicks: +e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">البيض التالف / الكابس</label>
+            <input type="number" value={hatchForm.spoiledEggs} onChange={e => setHatchForm(p => ({ ...p, spoiledEggs: +e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg" />
+          </div>
+          <div className="bg-emerald-50 rounded-lg p-3 text-center">
+            <span className="text-sm text-emerald-700 font-bold">
+              نسبة الفقس: {(batch.fertilizedCount || batch.eggCount) > 0 ? formatPercent((hatchForm.hatchedChicks / (batch.fertilizedCount || batch.eggCount)) * 100) : '0%'}
+            </span>
+          </div>
+          <button onClick={saveHatch} className="w-full py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition">حفظ وتحديث الحالة</button>
+        </div>
+      </Modal>
+
+      {/* Transfer Confirmation */}
+      <ConfirmDialog isOpen={showTransfer} onClose={() => setShowTransfer(false)} onConfirm={transferToRearing} title="تأكيد النقل" message={`سيتم إنشاء دفعة تربية جديدة مرتبطة بـ ${batch.hatchedChicks} كتكوت. هل تريد المتابعة؟`} confirmLabel="تحويل" />
+    </AppShell>
+  );
+}
