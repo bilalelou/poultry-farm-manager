@@ -90,30 +90,57 @@ export default function FlockPage() {
     setShowModal(true);
   }
 
-  function handleHeadCountChange(total: number) {
+  function handleMalesChange(males: number) {
+    const m = Math.max(0, isNaN(males) ? 0 : males);
     setForm(prev => {
-      const t = Math.max(0, total);
-      const m = Math.min(prev.malesCount, t);
-      const f = t - m;
-      return { ...prev, headCount: t, malesCount: m, femalesCount: f };
+      // إذا كانت المجموعة ديوك، فالإجمالي يساوي عدد الديوك والإناث 0
+      if (prev.category === 'roosters') {
+        return { ...prev, malesCount: m, headCount: m, femalesCount: 0 };
+      }
+      const total = Math.max(m + prev.femalesCount, prev.headCount);
+      const f = Math.max(0, total - m);
+      return { ...prev, malesCount: m, headCount: total, femalesCount: f };
     });
   }
 
-  function handleMalesChange(males: number) {
+  function handleFemalesChange(females: number) {
+    const f = Math.max(0, isNaN(females) ? 0 : females);
     setForm(prev => {
-      const m = Math.max(0, Math.min(males, prev.headCount));
-      const f = Math.max(0, prev.headCount - m);
-      return { ...prev, malesCount: m, femalesCount: f };
+      if (prev.category === 'layers') {
+        return { ...prev, femalesCount: f, headCount: f + prev.malesCount };
+      }
+      const total = Math.max(prev.malesCount + f, prev.headCount);
+      return { ...prev, femalesCount: f, headCount: total };
+    });
+  }
+
+  function handleHeadCountChange(total: number) {
+    const t = Math.max(0, isNaN(total) ? 0 : total);
+    setForm(prev => {
+      if (prev.category === 'roosters') {
+        return { ...prev, headCount: t, malesCount: t, femalesCount: 0 };
+      }
+      if (prev.category === 'layers') {
+        return { ...prev, headCount: t, femalesCount: Math.max(0, t - prev.malesCount) };
+      }
+      const m = Math.min(prev.malesCount, t);
+      const f = Math.max(0, t - m);
+      return { ...prev, headCount: t, malesCount: m, femalesCount: f };
     });
   }
 
   async function saveFlockGroup() {
     if (!form.name.trim()) return;
 
+    const dataToSave = {
+      ...form,
+      headCount: form.malesCount + form.femalesCount,
+    };
+
     if (editingId) {
-      await db.flockGroups.update(editingId, form);
+      await db.flockGroups.update(editingId, dataToSave);
     } else {
-      await db.flockGroups.add(form);
+      await db.flockGroups.add(dataToSave);
     }
     setShowModal(false);
     loadData();
@@ -332,35 +359,34 @@ export default function FlockPage() {
           </div>
 
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-            <div>
-              <label className="block text-sm font-bold text-slate-800 mb-1">إجمالي العدد (رؤوس)</label>
-              <input
-                type="number"
-                min="1"
-                value={form.headCount}
-                onChange={e => handleHeadCountChange(+e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-900 bg-white"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-bold text-blue-700 mb-1">🐓 عدد الذكور / الديوك</label>
+                <label className="block text-xs font-bold text-blue-700 mb-1">🐓 عدد الديوك / الفروج</label>
                 <input
                   type="number"
                   min="0"
-                  max={form.headCount}
                   value={form.malesCount}
-                  onChange={e => handleMalesChange(+e.target.value)}
-                  className="w-full px-3 py-1.5 border border-blue-300 rounded-lg text-sm font-bold text-blue-800 bg-white"
+                  onChange={e => handleMalesChange(parseInt(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm font-bold text-blue-800 bg-white"
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-pink-700 mb-1">🐔 عدد الإناث (محسوب)</label>
-                <div className="w-full px-3 py-1.5 border border-pink-200 rounded-lg text-sm font-black text-pink-700 bg-pink-50 flex items-center justify-between">
-                  <span>إناث:</span>
-                  <span>{form.femalesCount}</span>
-                </div>
+                <label className="block text-xs font-bold text-pink-700 mb-1">🐔 عدد الإناث (الدجاج)</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.femalesCount}
+                  onChange={e => handleFemalesChange(parseInt(e.target.value) || 0)}
+                  className="w-full px-3 py-2 border border-pink-300 rounded-lg text-sm font-bold text-pink-800 bg-white"
+                />
               </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200 flex items-center justify-between bg-white p-2.5 rounded-lg border border-slate-200">
+              <span className="text-xs font-bold text-slate-700">إجمالي رؤوس المجموعة:</span>
+              <span className="text-xl font-black text-slate-900">
+                {form.malesCount + form.femalesCount} <span className="text-xs font-normal text-slate-500">طير</span>
+              </span>
             </div>
           </div>
 
