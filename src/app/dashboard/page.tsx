@@ -74,8 +74,8 @@ export default function DashboardPage() {
           r.mortalityCount !== undefined && r.mortalityCount !== null
             ? r.mortalityCount
             : r.currentHealthyCount !== undefined && r.currentHealthyCount !== null
-            ? Math.max(0, initial - r.currentHealthyCount)
-            : 0;
+              ? Math.max(0, initial - r.currentHealthyCount)
+              : 0;
         totalRearingInitial += initial;
         totalRearingDeaths += deaths;
         if (r.status === 'transferred') {

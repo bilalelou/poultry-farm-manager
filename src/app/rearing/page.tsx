@@ -5,6 +5,7 @@ import Link from 'next/link';
 import AppShell from '@/components/AppShell';
 import { Card, Badge, Modal, EmptyState, LoadingSpinner, ConfirmDialog } from '@/components/ui';
 import { db } from '@/lib/db';
+import { transferRearingBatchToProduction } from '@/lib/transfer-helpers';
 import type { RearingBatch, RearingStatus } from '@/lib/types';
 import { REARING_STATUS_LABELS } from '@/lib/types';
 import { formatDate, getRearingWeek, getFeedPhase, getFeedPhaseName, generateBatchCode, todayISO, cn } from '@/lib/utils';
@@ -149,43 +150,7 @@ export default function RearingListPage() {
 
   async function confirmTransfer() {
     if (!transferBatch || !transferBatch.id) return;
-    const batch = transferBatch;
-    const initial = batch.initialChickCount || 0;
-    const mortality = batch.mortalityCount ?? 0;
-    const healthyCount = batch.currentHealthyCount ?? Math.max(0, initial - mortality);
-    const males = batch.malesCount ?? 0;
-    const femalesCount = Math.max(0, healthyCount - males);
-
-    // 1. تحديث حالة الدفعة
-    await db.rearingBatches.update(batch.id, { status: 'transferred' });
-
-    // 2. تحديث قطيع الإنتاج في PostgreSQL بإناث البيض
-    const prods = await db.dailyProduction.orderBy('date').reverse().toArray();
-    const currentActive = prods.length > 0 ? (prods[0].activeHenCount - prods[0].dailyMortality) : 10;
-    const newTotal = currentActive + femalesCount;
-    const today = todayISO();
-    const existingToday = prods.find(p => p.date === today);
-
-    if (existingToday && existingToday.id) {
-      await db.dailyProduction.update(existingToday.id, {
-        activeHenCount: existingToday.activeHenCount + femalesCount,
-        notes: (existingToday.notes ? existingToday.notes + ' | ' : '') + `انضمام ${femalesCount} إناث بياضة من ${batch.batchCode} (${males} ذكور تم عزلها)`,
-      });
-    } else {
-      await db.dailyProduction.add({
-        date: today,
-        activeHenCount: newTotal,
-        dailyMortality: 0,
-        totalEggsCollected: 0,
-        brokenEggs: 0,
-        incubatorEggs: 0,
-        personalUse: 0,
-        netSaleableEggs: 0,
-        productionRate: 0,
-        notes: `انضمام ${femalesCount} إناث بياضة من الدفعة ${batch.batchCode} إلى قطيع الإنتاج (المجموع: ${newTotal} دجاجة بياضة)`,
-      });
-    }
-
+    await transferRearingBatchToProduction(transferBatch);
     setTransferBatch(null);
     loadData();
   }
@@ -318,7 +283,7 @@ export default function RearingListPage() {
                           title="نقل الدجاج السليم إلى قطيع الإنتاج"
                         >
                           <Truck className="w-3.5 h-3.5" />
-                          نقل للإنتاج (+{batch.currentHealthyCount ?? (batch.initialChickCount - (batch.mortalityCount ?? 0))})
+                          نقل الإناث (+{Math.max(0, (batch.currentHealthyCount ?? (batch.initialChickCount - (batch.mortalityCount ?? 0))) - (batch.malesCount ?? 0))})
                         </button>
                       )}
                       <div className="flex items-center gap-1">
@@ -438,7 +403,7 @@ export default function RearingListPage() {
         title="نقل الدجاج السليم إلى قطيع الإنتاج"
         message={
           transferBatch
-            ? `سيتم نقل ${transferBatch.currentHealthyCount ?? (transferBatch.initialChickCount - (transferBatch.mortalityCount ?? 0))} دجاجة سليمة من الدفعة (${transferBatch.batchCode}) وإضافتها مباشرة إلى قطيع الإنتاج الحالي في صفحة الإنتاج والمبيعات. هل تريد المتابعة؟`
+            ? `سيتم نقل ${Math.max(0, (transferBatch.currentHealthyCount ?? (transferBatch.initialChickCount - (transferBatch.mortalityCount ?? 0))) - (transferBatch.malesCount ?? 0))} أنثى بياضة من الدفعة (${transferBatch.batchCode}) إلى قطيع الإنتاج والقطيع العام وتحديث قيمة المشروع (مع عزل ${transferBatch.malesCount ?? 0} ذكور). هل تريد المتابعة؟`
             : ''
         }
         confirmLabel="تأكيد النقل للإنتاج 🚚"

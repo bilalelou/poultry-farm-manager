@@ -101,141 +101,141 @@ interface ProgressBarProps {
   isLowerBetter?: boolean;
 }
 
-export function ProgressBar({ label, value, target, unit = '%', color, isLowerBetter = false }: ProgressBarProps) {
-  const percent = target > 0 ? Math.min((value / target) * 100, 100) : 0;
-  const autoColor =
-    color ||
-    (isLowerBetter
-      ? value <= target
-        ? 'green'
-        : value <= target * 1.5
-        ? 'yellow'
-        : 'red'
-      : percent >= 95
-      ? 'green'
-      : percent >= 80
-      ? 'yellow'
-      : 'red');
-  const barColors = {
-    green: 'bg-emerald-500',
-    yellow: 'bg-amber-500',
-    red: 'bg-red-500',
-  };
-  const dotColors = {
-    green: 'bg-emerald-400',
-    yellow: 'bg-amber-400',
-    red: 'bg-red-400',
-  };
+  export function ProgressBar({ label, value, target, unit = '%', color, isLowerBetter = false }: ProgressBarProps) {
+    const percent = target > 0 ? Math.min((value / target) * 100, 100) : 0;
+    const autoColor =
+      color ||
+      (isLowerBetter
+        ? value <= target
+          ? 'green'
+          : value <= target * 1.5
+            ? 'yellow'
+            : 'red'
+        : percent >= 95
+          ? 'green'
+          : percent >= 80
+            ? 'yellow'
+            : 'red');
+    const barColors = {
+      green: 'bg-emerald-500',
+      yellow: 'bg-amber-500',
+      red: 'bg-red-500',
+    };
+    const dotColors = {
+      green: 'bg-emerald-400',
+      yellow: 'bg-amber-400',
+      red: 'bg-red-400',
+    };
 
-  return (
-    <div className="mb-3">
-      <div className="flex justify-between items-center mb-1">
-        <div className="flex items-center gap-2">
-          <span className={cn('w-2 h-2 rounded-full', dotColors[autoColor])} />
-          <span className="text-sm font-medium text-slate-700">{label}</span>
+    return (
+      <div className="mb-3">
+        <div className="flex justify-between items-center mb-1">
+          <div className="flex items-center gap-2">
+            <span className={cn('w-2 h-2 rounded-full', dotColors[autoColor])} />
+            <span className="text-sm font-medium text-slate-700">{label}</span>
+          </div>
+          <span className="text-sm font-bold text-slate-800">
+            {value.toFixed(1)}{unit} / {target}{unit}
+          </span>
         </div>
-        <span className="text-sm font-bold text-slate-800">
-          {value.toFixed(1)}{unit} / {target}{unit}
-        </span>
+        <div className="w-full bg-slate-100 rounded-full h-2.5">
+          <div
+            className={cn('h-2.5 rounded-full transition-all duration-500', barColors[autoColor])}
+            style={{ width: `${percent}%` }}
+          />
+        </div>
       </div>
-      <div className="w-full bg-slate-100 rounded-full h-2.5">
-        <div
-          className={cn('h-2.5 rounded-full transition-all duration-500', barColors[autoColor])}
-          style={{ width: `${percent}%` }}
-        />
+    );
+  }
+
+  // === Badge ===
+  interface BadgeProps {
+    children: React.ReactNode;
+    color?: 'blue' | 'green' | 'red' | 'amber' | 'slate' | 'purple';
+  }
+
+  const BADGE_COLORS = {
+    blue: 'bg-blue-100 text-blue-700',
+    green: 'bg-emerald-100 text-emerald-700',
+    red: 'bg-red-100 text-red-700',
+    amber: 'bg-amber-100 text-amber-700',
+    slate: 'bg-slate-100 text-slate-700',
+    purple: 'bg-purple-100 text-purple-700',
+  };
+
+  export function Badge({ children, color = 'blue' }: BadgeProps) {
+    return (
+      <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', BADGE_COLORS[color])}>
+        {children}
+      </span>
+    );
+  }
+
+  // === Empty State ===
+  interface EmptyStateProps {
+    icon: React.ReactNode;
+    title: string;
+    description: string;
+    action?: { label: string; onClick: () => void };
+  }
+
+  export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
+    return (
+      <div className="text-center py-12">
+        <div className="text-slate-300 flex justify-center mb-4">{icon}</div>
+        <h3 className="text-lg font-bold text-slate-600 mb-2">{title}</h3>
+        <p className="text-sm text-slate-400 mb-4 max-w-md mx-auto">{description}</p>
+        {action && (
+          <button
+            onClick={action.onClick}
+            className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
+          >
+            {action.label}
+          </button>
+        )}
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-// === Badge ===
-interface BadgeProps {
-  children: React.ReactNode;
-  color?: 'blue' | 'green' | 'red' | 'amber' | 'slate' | 'purple';
-}
-
-const BADGE_COLORS = {
-  blue: 'bg-blue-100 text-blue-700',
-  green: 'bg-emerald-100 text-emerald-700',
-  red: 'bg-red-100 text-red-700',
-  amber: 'bg-amber-100 text-amber-700',
-  slate: 'bg-slate-100 text-slate-700',
-  purple: 'bg-purple-100 text-purple-700',
-};
-
-export function Badge({ children, color = 'blue' }: BadgeProps) {
-  return (
-    <span className={cn('inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium', BADGE_COLORS[color])}>
-      {children}
-    </span>
-  );
-}
-
-// === Empty State ===
-interface EmptyStateProps {
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  action?: { label: string; onClick: () => void };
-}
-
-export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
-  return (
-    <div className="text-center py-12">
-      <div className="text-slate-300 flex justify-center mb-4">{icon}</div>
-      <h3 className="text-lg font-bold text-slate-600 mb-2">{title}</h3>
-      <p className="text-sm text-slate-400 mb-4 max-w-md mx-auto">{description}</p>
-      {action && (
-        <button
-          onClick={action.onClick}
-          className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
-        >
-          {action.label}
-        </button>
-      )}
-    </div>
-  );
-}
-
-// === Loading Spinner ===
-export function LoadingSpinner() {
-  return (
-    <div className="flex items-center justify-center py-12">
-      <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-    </div>
-  );
-}
-
-// === Confirm Dialog ===
-interface ConfirmDialogProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
-  title: string;
-  message: string;
-  confirmLabel?: string;
-  confirmColor?: 'blue' | 'red';
-}
-
-export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, confirmLabel = 'تأكيد', confirmColor = 'blue' }: ConfirmDialogProps) {
-  if (!isOpen) return null;
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
-      <p className="text-slate-600 mb-6">{message}</p>
-      <div className="flex gap-3 justify-end">
-        <button onClick={onClose} className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50">
-          إلغاء
-        </button>
-        <button
-          onClick={() => { onConfirm(); onClose(); }}
-          className={cn(
-            'px-4 py-2 rounded-xl text-white font-medium',
-            confirmColor === 'red' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
-          )}
-        >
-          {confirmLabel}
-        </button>
+  // === Loading Spinner ===
+  export function LoadingSpinner() {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
       </div>
-    </Modal>
-  );
-}
+    );
+  }
+
+  // === Confirm Dialog ===
+  interface ConfirmDialogProps {
+    isOpen: boolean;
+    onClose: () => void;
+    onConfirm: () => void;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    confirmColor?: 'blue' | 'red';
+  }
+
+  export function ConfirmDialog({ isOpen, onClose, onConfirm, title, message, confirmLabel = 'تأكيد', confirmColor = 'blue' }: ConfirmDialogProps) {
+    if (!isOpen) return null;
+    return (
+      <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
+        <p className="text-slate-600 mb-6">{message}</p>
+        <div className="flex gap-3 justify-end">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl border border-slate-300 text-slate-600 hover:bg-slate-50">
+            إلغاء
+          </button>
+          <button
+            onClick={() => { onConfirm(); onClose(); }}
+            className={cn(
+              'px-4 py-2 rounded-xl text-white font-medium',
+              confirmColor === 'red' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+            )}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </Modal>
+    );
+  }

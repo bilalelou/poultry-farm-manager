@@ -48,8 +48,8 @@ export async function seedDatabase(forceReset: boolean = false) {
       layer: 110, // 110 غرام لكل دجاجة بياضة يومياً
     },
     sellingPrices: {
-      egg: 1.5, // سعر بيع بيض البلدي/المائدة الحالي بالدرهم
-      tray: 45,
+      egg: 2.0, // سعر بيع بيض البلدي/المائدة الحالي بالدرهم
+      tray: 60,
       fertilizedEgg: 3.5,
       chick: 7.0,
       culledHen: 40,
@@ -89,16 +89,18 @@ export async function seedDatabase(forceReset: boolean = false) {
 
   const batchId = await db.incubatorBatches.add(realBatch);
 
-  // 4. دفعة العتوكة المشتراة قيد التجهيز (18 عتوكة متبقية ستدخل الإنتاج قريباً)
+  // 4. دفعة العتوكة المشتراة قيد التجهيز (22 عتوكة متبقية: 20 إناث + 2 ذكور)
   const rearingBatch: RearingBatch = {
     batchCode: 'ATK-2611',
-    startDate: '2026-10-20', // عمرها حالياً حوالي شهر وتستعد للإنتاج
+    startDate: '2026-10-20',
     initialChickCount: 36,
     initialCostPerChick: 40, // 40 درهم للعتوكة
-    currentHealthyCount: 18, // العدد السليم المتبقي
+    currentHealthyCount: 22, // العدد السليم المتبقي
     mortalityCount: 14,      // عدد النفوق
+    malesCount: 2,
+    currentAgeWeeks: 18,
     status: 'rearing',
-    notes: 'شراء 36 عتوكة بـ 40 درهم للحبة، نفق منها 14 وتبقى 18 حبة سليمة ستدخل الإنتاج قريباً',
+    notes: 'شراء 36 عتوكة بـ 40 درهم للحبة، نفق منها 14 وتبقى 22 حبة سليمة (20 إناث + 2 ذكور) ستدخل الإنتاج قريباً',
     createdAt: '2026-10-20',
   };
 
@@ -148,7 +150,7 @@ export async function seedDatabase(forceReset: boolean = false) {
       quantity: 36,
       unitPrice: 40,
       total: 1440,
-      notes: 'نفق منها 14 حبة وبقي 18 حبة ستدخل الإنتاج',
+      notes: 'نفق منها 14 حبة وبقي 22 حبة (20 إناث + 2 ذكور) ستدخل الإنتاج قريباً',
     },
     // تكلفة البيض الخارجي للفقاسة (63 بيضة * 3.5 درهم = 220.5 درهم)
     {

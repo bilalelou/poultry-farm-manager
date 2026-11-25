@@ -54,11 +54,14 @@ export default function SettingsPage() {
       dailyProduction: await db.dailyProduction.toArray(),
       sales: await db.sales.toArray(),
       expenses: await db.expenses.toArray(),
+      flockGroups: await db.flockGroups.toArray(),
+      investors: await db.investors.toArray(),
+      valuationItems: await db.valuationItems.toArray(),
       expansionPlans: await db.expansionPlans.toArray(),
       expansionPlanMonths: await db.expansionPlanMonths.toArray(),
       alerts: await db.alerts.toArray(),
       exportDate: new Date().toISOString(),
-      version: '1.0.0',
+      version: '1.1.0',
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -80,6 +83,9 @@ export default function SettingsPage() {
       if (data.dailyProduction) { await db.dailyProduction.clear(); await db.dailyProduction.bulkAdd(data.dailyProduction); }
       if (data.sales) { await db.sales.clear(); await db.sales.bulkAdd(data.sales); }
       if (data.expenses) { await db.expenses.clear(); await db.expenses.bulkAdd(data.expenses); }
+      if (data.flockGroups) { await db.flockGroups.clear(); await db.flockGroups.bulkAdd(data.flockGroups); }
+      if (data.investors) { await db.investors.clear(); await db.investors.bulkAdd(data.investors); }
+      if (data.valuationItems) { await db.valuationItems.clear(); await db.valuationItems.bulkAdd(data.valuationItems); }
       if (data.settings && data.settings.length > 0) {
         await db.settings.clear();
         await db.settings.bulkAdd(data.settings);

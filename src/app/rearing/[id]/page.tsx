@@ -6,9 +6,10 @@ import { useRouter } from 'next/navigation';
 import AppShell from '@/components/AppShell';
 import { Card, Badge, Modal, LoadingSpinner, ConfirmDialog } from '@/components/ui';
 import { db, getSettings } from '@/lib/db';
+import { transferRearingBatchToProduction } from '@/lib/transfer-helpers';
 import type { RearingBatch, RearingWeeklyLog, Settings } from '@/lib/types';
 import { DEFAULT_VACCINATION_SCHEDULE } from '@/lib/types';
-import { formatCurrency, formatPercent, formatDate, getFeedPhase, getFeedPhaseName, getRearingWeek, todayISO, cn } from '@/lib/utils';
+import { formatCurrency, formatPercent, formatDate, getFeedPhase, getFeedPhaseName, getRearingWeek, cn } from '@/lib/utils';
 import { ArrowRight, Plus, Syringe, Truck, DollarSign } from 'lucide-react';
 
 export default function RearingDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -85,39 +86,7 @@ export default function RearingDetailPage({ params }: { params: Promise<{ id: st
 
   async function transferToProduction() {
     if (!batch?.id) return;
-    
-    // 1. تحديث حالة دفعة التربية إلى تم النقل
-    await db.rearingBatches.update(batch.id, { status: 'transferred' });
-
-    // 2. جلب آخر سجل إنتاج للحصول على عدد الدجاج الحالي وإضافة العدد السليم إليه
-    const prods = await db.dailyProduction.orderBy('date').reverse().toArray();
-    const currentActiveHens = prods.length > 0 ? (prods[0].activeHenCount - prods[0].dailyMortality) : 10;
-    const newActiveHens = currentActiveHens + finalRemaining;
-
-    // 3. إضافة سجل إنتاج جديد بتاريخ اليوم بهذا العدد الجديد للقطيع البياض
-    const today = todayISO();
-    const existingToday = prods.find(p => p.date === today);
-
-    if (existingToday && existingToday.id) {
-      await db.dailyProduction.update(existingToday.id, {
-        activeHenCount: existingToday.activeHenCount + finalRemaining,
-        notes: (existingToday.notes ? existingToday.notes + ' | ' : '') + `تم انضمام ${finalRemaining} دجاجة من الدفعة ${batch.batchCode}`,
-      });
-    } else {
-      await db.dailyProduction.add({
-        date: today,
-        activeHenCount: newActiveHens,
-        dailyMortality: 0,
-        totalEggsCollected: 0,
-        brokenEggs: 0,
-        incubatorEggs: 0,
-        personalUse: 0,
-        netSaleableEggs: 0,
-        productionRate: 0,
-        notes: `انضمام ${finalRemaining} دجاجة سليمة من الدفعة ${batch.batchCode} إلى قطيع الإنتاج (المجموع: ${newActiveHens} دجاجة)`,
-      });
-    }
-
+    await transferRearingBatchToProduction(batch, finalRemaining);
     setShowTransfer(false);
     router.push('/production');
   }
@@ -145,6 +114,7 @@ export default function RearingDetailPage({ params }: { params: Promise<{ id: st
   const finalRemaining = logs.length > 0
     ? logs[logs.length - 1].remainingCount
     : (batch.currentHealthyCount !== undefined ? batch.currentHealthyCount : (batch.initialChickCount - (batch.mortalityCount || 0)));
+  const finalFemales = Math.max(0, finalRemaining - (batch.malesCount || 0));
   const totalMortality = logs.length > 0
     ? logs.reduce((s, l) => s + l.weeklyMortality, 0)
     : (batch.mortalityCount ?? (batch.initialChickCount - finalRemaining));
@@ -295,20 +265,23 @@ export default function RearingDetailPage({ params }: { params: Promise<{ id: st
       )}
 
       {/* Transfer Button */}
-      {batch.status === 'completed' && (
-        <Card className="p-5 bg-gradient-to-l from-emerald-50 to-white">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <div>
-              <h3 className="font-bold text-slate-800">نقل الإناث الجاهزة إلى القطيع البياض</h3>
-              <p className="text-sm text-slate-500">{finalRemaining} دجاجة جاهزة للإنتاج</p>
+      {batch.status !== 'transferred' &&
+        (batch.status === 'completed' || (batch.currentAgeWeeks || getRearingWeek(batch.startDate)) >= 20) && (
+          <Card className="p-5 bg-gradient-to-l from-emerald-50 to-white">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div>
+                <h3 className="font-bold text-slate-800">نقل الإناث الجاهزة إلى القطيع البياض</h3>
+                <p className="text-sm text-slate-500">
+                  {finalFemales} إناث بياضة جاهزة للإنتاج ({batch.malesCount || 0} ذكور معزولة)
+                </p>
+              </div>
+              <button onClick={() => setShowTransfer(true)} className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition">
+                <Truck className="w-5 h-5" />
+                نقل إلى القطيع البياض
+              </button>
             </div>
-            <button onClick={() => setShowTransfer(true)} className="flex items-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition">
-              <Truck className="w-5 h-5" />
-              نقل إلى القطيع البياض
-            </button>
-          </div>
-        </Card>
-      )}
+          </Card>
+        )}
 
       {/* Add Weekly Log Modal */}
       <Modal isOpen={showLogForm} onClose={() => setShowLogForm(false)} title={`تسجيل الأسبوع ${nextWeek} — ${getFeedPhaseName(feedPhase)}`} size="lg">
@@ -371,7 +344,7 @@ export default function RearingDetailPage({ params }: { params: Promise<{ id: st
         </button>
       </Modal>
 
-      <ConfirmDialog isOpen={showTransfer} onClose={() => setShowTransfer(false)} onConfirm={transferToProduction} title="تأكيد النقل" message={`سيتم نقل ${finalRemaining} دجاجة إلى القطيع البياض. هل تريد المتابعة؟`} confirmLabel="نقل" />
+      <ConfirmDialog isOpen={showTransfer} onClose={() => setShowTransfer(false)} onConfirm={transferToProduction} title="تأكيد النقل" message={`سيتم نقل ${finalFemales} أنثى سليمة إلى القطيع البياض وتحديث القطيع العام وقيمة المشروع تلقائياً (مع عزل ${batch.malesCount || 0} ذكور). هل تريد المتابعة؟`} confirmLabel="نقل" />
     </AppShell>
   );
 }
