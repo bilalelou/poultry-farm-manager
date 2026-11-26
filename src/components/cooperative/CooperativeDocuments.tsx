@@ -385,54 +385,41 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
     `;
   }
 
-  // Document 4: التزام بوضع مقر رهن الإشارة (أبيض وأسود فقط وبدون أي إضافات)
+  // Document 4: التزام بوضع مقر رهن الإشارة (أبيض وأسود فقط، نص خالص بدون أي جداول)
   function generateDoc4HTML(): string {
     return `
-      <div style="font-family: 'Times New Roman', Times, Arial, Tahoma, sans-serif; direction: rtl; text-align: right; line-height: 2; color: #000000; background-color: #ffffff; max-width: 750px; margin: 0 auto; padding: 25px;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <p style="font-size: 15px; font-weight: bold; color: #000000; margin: 0 0 10px 0;">المملكة المغربية</p>
+      <div style="font-family: 'Times New Roman', Times, Arial, Tahoma, sans-serif; direction: rtl; text-align: right; line-height: 2.2; color: #000000; background-color: #ffffff; max-width: 750px; margin: 0 auto; padding: 30px 25px;">
+        <div style="text-align: center; margin-bottom: 35px;">
+          <p style="font-size: 16px; font-weight: bold; color: #000000; margin: 0 0 10px 0;">المملكة المغربية</p>
           <h1 style="font-size: 24px; font-weight: bold; color: #000000; margin: 10px 0; text-decoration: underline; text-underline-offset: 6px;">التزام بوضع مقر رهن الإشارة</h1>
         </div>
 
-        <div style="margin-bottom: 25px;">
-          <p style="font-size: 15px; font-weight: bold; color: #000000; margin-bottom: 12px;">أنا الموقع(ة) أسفله:</p>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
-            <tr>
-              <td style="border: 1px solid #000000; padding: 8px 12px; font-size: 14px; font-weight: bold; width: 35%; color: #000000;">الاسم الكامل:</td>
-              <td style="border: 1px solid #000000; padding: 8px 12px; font-size: 14px; color: #000000;">${ownerName}</td>
-            </tr>
-            <tr>
-              <td style="border: 1px solid #000000; padding: 8px 12px; font-size: 14px; font-weight: bold; color: #000000;">رقم البطاقة الوطنية (CIN):</td>
-              <td style="border: 1px solid #000000; padding: 8px 12px; font-size: 14px; color: #000000;">${ownerCin}</td>
-            </tr>
-            <tr>
-              <td style="border: 1px solid #000000; padding: 8px 12px; font-size: 14px; font-weight: bold; color: #000000;">الساكن(ة) بـ:</td>
-              <td style="border: 1px solid #000000; padding: 8px 12px; font-size: 14px; color: #000000;">${ownerAddress}</td>
-            </tr>
-          </table>
+        <p style="font-size: 16px; font-weight: bold; color: #000000; margin-bottom: 12px;">أنا الموقع(ة) أسفله:</p>
+        
+        <div style="margin: 0 25px 25px 0; font-size: 15px; line-height: 2.4; color: #000000;">
+          <p style="margin: 6px 0;">• <strong>الاسم الكامل:</strong> ${ownerName}</p>
+          <p style="margin: 6px 0;">• <strong>رقم البطاقة الوطنية للتعريف (CIN):</strong> ${ownerCin}</p>
+          <p style="margin: 6px 0;">• <strong>الساكن(ة) بـ:</strong> ${ownerAddress}</p>
         </div>
 
-        <div style="font-size: 15px; text-align: justify; margin-bottom: 25px; line-height: 2.2; color: #000000;">
+        <p style="font-size: 15px; text-align: justify; margin-bottom: 25px; line-height: 2.2; color: #000000;">
           أصرح وألتزم بصفتي مالكاً(ة) (أو مستغلاً قانونياً) للعقار الكائن بـ: <strong>${headquartersAddress}</strong>، بأنني أضع هذا المحل رهن إشارة <strong>تعاونية ${coopName}</strong>، في طور التأسيس، بصفة مجانية، وذلك لاتخاذه مقراً اجتماعياً لها ولمزاولة أنشطتها المنصوص عليها في نظامها الأساسي.
-        </div>
+        </p>
 
-        <div style="font-size: 15px; text-align: justify; margin-bottom: 40px; color: #000000;">
+        <p style="font-size: 15px; text-align: justify; margin-bottom: 45px; line-height: 2.2; color: #000000;">
           وقد سلمت هذا الالتزام للإدلاء به عند الحاجة لدى السلطات الإدارية والقضائية المختصة.
-        </div>
+        </p>
 
-        <table style="width: 100%; border: none; margin-top: 30px;">
-          <tr>
-            <td style="border: none; vertical-align: top; font-size: 15px; font-weight: bold; color: #000000;">
-              حرر بـ: ${cityPlace} في ${assemblyDate}
-            </td>
-            <td style="border: none; text-align: left; width: 280px;">
-              <div style="border: 1px solid #000000; padding: 15px; text-align: center; min-height: 120px;">
-                <p style="font-size: 14px; font-weight: bold; margin: 0 0 6px 0; color: #000000;">إمضاء المصرح(ة)</p>
-                <p style="font-size: 11px; margin: 0; color: #000000;">(مصادق عليه لدى السلطة المختصة)</p>
-              </div>
-            </td>
-          </tr>
-        </table>
+        <div style="margin-top: 45px;">
+          <div style="float: right; font-size: 15px; font-weight: bold; color: #000000; padding-top: 10px;">
+            حرر بـ: ${cityPlace} في ${assemblyDate}
+          </div>
+          <div style="float: left; border: 1px solid #000000; padding: 20px 35px; text-align: center; width: 260px; min-height: 120px; box-sizing: border-box;">
+            <p style="font-size: 15px; font-weight: bold; margin: 0 0 6px 0; color: #000000;">إمضاء المصرح(ة)</p>
+            <p style="font-size: 11px; margin: 0; color: #000000;">(مصادق عليه لدى السلطة المختصة)</p>
+          </div>
+          <div style="clear: both;"></div>
+        </div>
       </div>
     `;
   }
