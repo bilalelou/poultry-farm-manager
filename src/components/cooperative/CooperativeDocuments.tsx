@@ -48,9 +48,9 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
   const [assemblyDay, setAssemblyDay] = useState('الخميس');
   const [assemblyTimeStart, setAssemblyTimeStart] = useState('10:00');
   const [assemblyTimeEnd, setAssemblyTimeEnd] = useState('12:30');
-  const [cityPlace, setCityPlace] = useState('[المكان]');
+  const [cityPlace, setCityPlace] = useState('عين شقف');
   const [headquartersAddress, setHeadquartersAddress] = useState(
-    profile.headquarters || '[العنوان الكامل للمقر، الجماعة، الإقليم]'
+    profile.headquarters || 'جماعة عين شقف، إقليم مولاي يعقوب'
   );
 
   // Property Owner state for Document 4 (Engagement)
@@ -394,16 +394,16 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
           <h1 style="font-size: 24px; font-weight: bold; color: #000000; margin: 10px 0; text-decoration: underline; text-underline-offset: 6px;">التزام بوضع مقر رهن الإشارة</h1>
         </div>
 
-        <p style="font-size: 16px; font-weight: bold; color: #000000; margin-bottom: 12px;">أنا الموقع(ة) أسفله:</p>
+        <p style="font-size: 16px; font-weight: bold; color: #000000; margin-bottom: 12px;">أنا الموقع أسفله:</p>
         
         <div style="margin: 0 25px 25px 0; font-size: 15px; line-height: 2.4; color: #000000;">
           <p style="margin: 6px 0;">• <strong>الاسم الكامل:</strong> ${ownerName}</p>
           <p style="margin: 6px 0;">• <strong>رقم البطاقة الوطنية للتعريف (CIN):</strong> ${ownerCin}</p>
-          <p style="margin: 6px 0;">• <strong>الساكن(ة) بـ:</strong> ${ownerAddress}</p>
+          <p style="margin: 6px 0;">• <strong>الساكن بـ:</strong> ${ownerAddress}</p>
         </div>
 
         <p style="font-size: 15px; text-align: justify; margin-bottom: 25px; line-height: 2.2; color: #000000;">
-          أصرح وألتزم بصفتي مالكاً(ة) (أو مستغلاً قانونياً) للعقار الكائن بـ: <strong>${headquartersAddress}</strong>، بأنني أضع هذا المحل رهن إشارة <strong>تعاونية ${coopName}</strong>، في طور التأسيس، بصفة مجانية، وذلك لاتخاذه مقراً اجتماعياً لها ولمزاولة أنشطتها المنصوص عليها في نظامها الأساسي.
+          أصرح وألتزم بصفتي مالكاً (أو مستغلاً قانونياً) للعقار الكائن بـ: <strong>${headquartersAddress}</strong>، بأنني أضع هذا المحل رهن إشارة <strong>تعاونية ${coopName}</strong>، في طور التأسيس، بصفة مجانية، وذلك لاتخاذه مقراً اجتماعياً لها ولمزاولة أنشطتها المنصوص عليها في نظامها الأساسي.
         </p>
 
         <p style="font-size: 15px; text-align: justify; margin-bottom: 45px; line-height: 2.2; color: #000000;">
@@ -415,7 +415,7 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
             حرر بـ: ${cityPlace} في ${assemblyDate}
           </div>
           <div style="float: left; text-align: center; width: 260px; min-height: 120px; box-sizing: border-box;">
-            <p style="font-size: 15px; font-weight: bold; margin: 0 0 8px 0; color: #000000;">إمضاء المصرح(ة)</p>
+            <p style="font-size: 15px; font-weight: bold; margin: 0 0 8px 0; color: #000000;">إمضاء المصرح</p>
             <p style="font-size: 12px; margin: 0; color: #000000;">(مصادق عليه لدى السلطة المختصة)</p>
           </div>
           <div style="clear: both;"></div>
