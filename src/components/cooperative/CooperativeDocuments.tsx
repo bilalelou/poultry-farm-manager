@@ -385,48 +385,54 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
     `;
   }
 
-  // Document 4: التزام بوضع مقر رهن الإشارة
+  // Document 4: التزام بوضع مقر رهن الإشارة (أبيض وأسود فقط وبدون أي إضافات)
   function generateDoc4HTML(): string {
     return `
-      <div style="font-family: Arial, Tahoma, sans-serif; direction: rtl; text-align: right; line-height: 1.8; color: #0f172a; max-width: 800px; margin: 0 auto;">
-        <div style="text-align: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 24px;">
-          <p style="font-size: 14px; color: #475569; margin: 0;">المملكة المغربية</p>
-          <h1 style="font-size: 24px; font-weight: 800; color: #1e3a8a; margin: 10px 0 6px 0;">التزام بوضع مقر رهن الإشارة</h1>
-          <p style="font-size: 14px; color: #64748b; margin: 0;">(شهادة تخصيص المقر الاجتماعي لتعاونية في طور التأسيس)</p>
+      <div style="font-family: 'Times New Roman', Times, Arial, Tahoma, sans-serif; direction: rtl; text-align: right; line-height: 2; color: #000000; background-color: #ffffff; max-width: 750px; margin: 0 auto; padding: 25px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <p style="font-size: 15px; font-weight: bold; color: #000000; margin: 0 0 10px 0;">المملكة المغربية</p>
+          <h1 style="font-size: 24px; font-weight: bold; color: #000000; margin: 10px 0; text-decoration: underline; text-underline-offset: 6px;">التزام بوضع مقر رهن الإشارة</h1>
         </div>
 
-        <div style="font-size: 15px; margin-bottom: 20px;">
-          <p style="font-weight: bold; margin-bottom: 10px;">أنا الموقع(ة) أسفله:</p>
-          <ul style="list-style: none; padding: 0; margin: 0 15px 15px 0;">
-            <li style="margin-bottom: 6px;">• <strong>الاسم الكامل:</strong> ${ownerName}</li>
-            <li style="margin-bottom: 6px;">• <strong>رقم البطاقة الوطنية للتعريف (CIN):</strong> ${ownerCin}</li>
-            <li style="margin-bottom: 6px;">• <strong>الساكن(ة) بـ:</strong> ${ownerAddress}</li>
-          </ul>
+        <div style="margin-bottom: 25px;">
+          <p style="font-size: 15px; font-weight: bold; color: #000000; margin-bottom: 12px;">أنا الموقع(ة) أسفله:</p>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            <tr>
+              <td style="border: 1px solid #000000; padding: 8px 12px; font-size: 14px; font-weight: bold; width: 35%; color: #000000;">الاسم الكامل:</td>
+              <td style="border: 1px solid #000000; padding: 8px 12px; font-size: 14px; color: #000000;">${ownerName}</td>
+            </tr>
+            <tr>
+              <td style="border: 1px solid #000000; padding: 8px 12px; font-size: 14px; font-weight: bold; color: #000000;">رقم البطاقة الوطنية (CIN):</td>
+              <td style="border: 1px solid #000000; padding: 8px 12px; font-size: 14px; color: #000000;">${ownerCin}</td>
+            </tr>
+            <tr>
+              <td style="border: 1px solid #000000; padding: 8px 12px; font-size: 14px; font-weight: bold; color: #000000;">الساكن(ة) بـ:</td>
+              <td style="border: 1px solid #000000; padding: 8px 12px; font-size: 14px; color: #000000;">${ownerAddress}</td>
+            </tr>
+          </table>
         </div>
 
-        <div style="font-size: 15px; text-align: justify; margin-bottom: 25px; line-height: 2;">
-          أصرح وألتزم بصفتي مالكاً(ة) (أو مستغلاً قانونياً) للعقار الكائن بـ:<br />
-          <strong>${headquartersAddress}</strong>،<br />
-          بأنني أضع هذا المحل رهن إشارة <strong>تعاونية ${coopName}</strong>، في طور التأسيس، بصفة مجانية، وذلك لاتخاذه مقراً اجتماعياً لها ولمزاولة أنشطتها الفلاحية المنصوص عليها في نظامها الأساسي.
+        <div style="font-size: 15px; text-align: justify; margin-bottom: 25px; line-height: 2.2; color: #000000;">
+          أصرح وألتزم بصفتي مالكاً(ة) (أو مستغلاً قانونياً) للعقار الكائن بـ: <strong>${headquartersAddress}</strong>، بأنني أضع هذا المحل رهن إشارة <strong>تعاونية ${coopName}</strong>، في طور التأسيس، بصفة مجانية، وذلك لاتخاذه مقراً اجتماعياً لها ولمزاولة أنشطتها المنصوص عليها في نظامها الأساسي.
         </div>
 
-        <p style="font-size: 15px; text-align: justify; margin-bottom: 30px;">
+        <div style="font-size: 15px; text-align: justify; margin-bottom: 40px; color: #000000;">
           وقد سلمت هذا الالتزام للإدلاء به عند الحاجة لدى السلطات الإدارية والقضائية المختصة.
-        </p>
-
-        <div style="margin-top: 30px; display: flex; justify-content: space-between; align-items: flex-start;">
-          <div style="font-size: 14px; font-weight: bold;">
-            حرر بـ ${cityPlace} في ${assemblyDate}
-          </div>
-          <div style="border: 1px dashed #64748b; padding: 15px 30px; text-align: center; border-radius: 6px; min-width: 260px;">
-            <p style="font-size: 15px; font-weight: bold; margin: 0 0 6px 0;">إمضاء المصرح(ة)</p>
-            <p style="font-size: 12px; color: #64748b; margin: 0 0 45px 0;">(مصادق عليه لدى السلطة المختصة)</p>
-          </div>
         </div>
 
-        <div style="margin-top: 40px; padding: 12px 16px; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12px; color: #475569;">
-          <strong>ملاحظة قانونية هامة قبل الطباعة:</strong> تأكد من تعبئة المعلومات بين المعقوفتين [...] بما يطابق شهادة المصادقة على التسمية والبطائق الوطنية، واطبع <strong>5 نسخ</strong> من كل وثيقة قبل التوجه للمقاطعة أو الجماعة لتصحيح الإمضاءات.
-        </div>
+        <table style="width: 100%; border: none; margin-top: 30px;">
+          <tr>
+            <td style="border: none; vertical-align: top; font-size: 15px; font-weight: bold; color: #000000;">
+              حرر بـ: ${cityPlace} في ${assemblyDate}
+            </td>
+            <td style="border: none; text-align: left; width: 280px;">
+              <div style="border: 1px solid #000000; padding: 15px; text-align: center; min-height: 120px;">
+                <p style="font-size: 14px; font-weight: bold; margin: 0 0 6px 0; color: #000000;">إمضاء المصرح(ة)</p>
+                <p style="font-size: 11px; margin: 0; color: #000000;">(مصادق عليه لدى السلطة المختصة)</p>
+              </div>
+            </td>
+          </tr>
+        </table>
       </div>
     `;
   }
