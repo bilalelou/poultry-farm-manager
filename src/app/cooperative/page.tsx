@@ -40,22 +40,24 @@ import {
   ArrowDownCircle,
   Landmark,
   ShieldCheck,
+  FolderDown,
 } from 'lucide-react';
+import CooperativeDocuments from '@/components/cooperative/CooperativeDocuments';
 
 const INFLOW_TYPES: CoopTxType[] = ['contribution', 'grant', 'coop_sale'];
 
 export default function CooperativePage() {
   const [loading, setLoading] = useState(true);
   const [sym, setSym] = useState('د.م');
-  const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'finance' | 'meetings'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'members' | 'finance' | 'meetings' | 'documents'>('overview');
 
   // Data
   const [profile, setProfile] = useState<CooperativeProfile>({
-    name: 'التعاونية الفلاحية لتربية الدواجن',
+    name: 'تعاونية مراعي الوادي',
     registrationNo: '',
     foundedDate: todayISO(),
     headquarters: '',
-    activity: 'تربية الدجاج البلدي، التفقيس، وإنتاج البيض',
+    activity: 'تربية الدواجن، تربية المواشي، إنتاج الأعلاف البديلة وتثمينها، وتسويق المنتوجات الفلاحية',
     bankRib: '',
     shareUnitValue: 100,
     legalReserveRate: 10,
@@ -532,6 +534,7 @@ export default function CooperativePage() {
       <div className="flex flex-wrap border-b border-slate-200 mb-6 gap-2">
         {[
           { id: 'overview', label: 'الملف التنظيمي وتوزيع الفائض', icon: Calculator },
+          { id: 'documents', label: 'وثائق التأسيس والقوانين (4 ملفات)', icon: FolderDown },
           { id: 'members', label: `المنخرطون والمكتب (${members.length})`, icon: Users },
           { id: 'finance', label: `صندوق التعاونية (${transactions.length})`, icon: Wallet },
           { id: 'meetings', label: `الاجتماعات والمحاضر (${meetings.length})`, icon: FileText },
@@ -1029,6 +1032,11 @@ export default function CooperativePage() {
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB 5: Founding Legal Documents (4 Documents) */}
+      {activeTab === 'documents' && (
+        <CooperativeDocuments profile={profile} members={members} />
       )}
 
       {/* Modal: Add/Edit Member */}
