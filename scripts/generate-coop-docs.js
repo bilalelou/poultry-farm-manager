@@ -261,7 +261,6 @@ const doc4Content = `
   </div>
 </div>
 `;
-`;
 
 // Combined Full Packet
 const fullPacketContent = `
