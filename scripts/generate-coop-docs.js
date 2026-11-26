@@ -249,13 +249,13 @@ const doc4Content = `
     وقد سلمت هذا الالتزام للإدلاء به عند الحاجة لدى السلطات الإدارية والقضائية المختصة.
   </p>
 
-  <div style="margin-top: 45px;">
+  <div style="margin-top: 50px;">
     <div style="float: right; font-size: 15px; font-weight: bold; color: #000000; padding-top: 10px;">
       حرر بـ: [المكان] في 26 نونبر 2026
     </div>
-    <div style="float: left; border: 1px solid #000000; padding: 20px 35px; text-align: center; width: 260px; min-height: 120px; box-sizing: border-box;">
-      <p style="font-size: 15px; font-weight: bold; margin: 0 0 6px 0; color: #000000;">إمضاء المصرح(ة)</p>
-      <p style="font-size: 11px; margin: 0; color: #000000;">(مصادق عليه لدى السلطة المختصة)</p>
+    <div style="float: left; text-align: center; width: 260px; min-height: 120px; box-sizing: border-box;">
+      <p style="font-size: 15px; font-weight: bold; margin: 0 0 8px 0; color: #000000;">إمضاء المصرح(ة)</p>
+      <p style="font-size: 12px; margin: 0; color: #000000;">(مصادق عليه لدى السلطة المختصة)</p>
     </div>
     <div style="clear: both;"></div>
   </div>
