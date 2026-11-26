@@ -40,7 +40,7 @@ interface FounderItem {
 
 export default function CooperativeDocuments({ profile, members }: CooperativeDocumentsProps) {
   // Document Customization Form State
-  const [coopName, setCoopName] = useState(profile.name || 'تعاونية مراعي الوادي');
+  const [coopName, setCoopName] = useState('مراعي الوادي');
   const [managerName, setManagerName] = useState('بلال الوادي');
   const [managerCin, setManagerCin] = useState('CD916618');
   const [managerMandate, setManagerMandate] = useState('3 سنوات');
@@ -52,6 +52,10 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
   const [headquartersAddress, setHeadquartersAddress] = useState(
     profile.headquarters || 'جماعة عين شقف، إقليم مولاي يعقوب'
   );
+
+  // Cooperative name helpers to prevent duplicate "تعاونية"
+  const cleanCoopName = coopName.replace(/^تعاونية\s*:?\s*/, '').trim() || 'مراعي الوادي';
+  const fullCoopTitle = `تعاونية ${cleanCoopName}`;
 
   // Property Owner state for Document 4 (Engagement)
   const [ownerName, setOwnerName] = useState('[الاسم الكامل لصاحب العقار]');
@@ -161,11 +165,11 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
         <div style="text-align: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 18px;">
           <p style="font-size: 13px; color: #475569; margin: 0;">المملكة المغربية — ملف تأسيس تعاونية وفق القانون رقم 112.12</p>
           <h1 style="font-size: 22px; font-weight: 800; color: #1e3a8a; margin: 8px 0 4px 0;">محضر الجمع العام التأسيسي</h1>
-          <p style="font-size: 16px; font-weight: bold; color: #0284c7; margin: 0;">تعاونية: ${coopName}</p>
+          <p style="font-size: 16px; font-weight: bold; color: #0284c7; margin: 0;">تعاونية: ${cleanCoopName}</p>
         </div>
 
         <p style="text-align: justify; font-size: 14px; margin-bottom: 14px;">
-          في يوم <strong>${assemblyDay} ${assemblyDate}</strong> على الساعة <strong>العاشرة صباحاً (${assemblyTimeStart})</strong>، انعقد بمقر <strong>${headquartersAddress}</strong>، الجمع العام التأسيسي لتعاونية <strong>${coopName}</strong>، وذلك بحضور الأعضاء المؤسسين الموقعة أسماؤهم أسفله.
+          في يوم <strong>${assemblyDay} ${assemblyDate}</strong> على الساعة <strong>العاشرة صباحاً (${assemblyTimeStart})</strong>، انعقد بمقر <strong>${headquartersAddress}</strong>، الجمع العام التأسيسي لـ <strong>${fullCoopTitle}</strong>، وذلك بحضور الأعضاء المؤسسين الموقعة أسماؤهم أسفله.
         </p>
 
         <h3 style="font-size: 16px; color: #1e3a8a; border-right: 4px solid #1e3a8a; padding-right: 8px; margin: 16px 0 8px 0;">جدول الأعمال:</h3>
@@ -181,7 +185,7 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
           بعد افتتاح الجلسة والترحيب بالحاضرين، تم التداول في النقط المدرجة بجدول الأعمال، واتخذ الجمع العام التأسيسي القرارات التالية بالإجماع:
         </p>
         <ul style="font-size: 14px; margin: 0 20px 14px 0; padding: 0; line-height: 1.8;">
-          <li><strong>القرار الأول:</strong> المصادقة على النظام الأساسي لتعاونية <strong>${coopName}</strong> وفق مقتضيات القانون رقم 112.12 المتعلق بالتعاونيات، مع تحديد مقرها الاجتماعي بـ <strong>${headquartersAddress}</strong>.</li>
+          <li><strong>القرار الأول:</strong> المصادقة على النظام الأساسي لـ <strong>${fullCoopTitle}</strong> وفق مقتضيات القانون رقم 112.12 المتعلق بالتعاونيات، مع تحديد مقرها الاجتماعي بـ <strong>${headquartersAddress}</strong>.</li>
           <li><strong>القرار الثاني:</strong> المصادقة على لائحة الأعضاء المؤسسين المكتتبين في رأس مال التعاونية المحدد في مبلغ <strong>${totalCapital} درهم (ألف درهم)</strong>، والمقسم إلى <strong>${totalShares} حصص</strong> اجتماعية بقيمة <strong>${shareValue} درهم</strong> لكل حصة.</li>
           <li><strong>القرار الثالث:</strong> تعيين السيد <strong>${managerName}</strong>، الحامل للبطاقة الوطنية للتعريف رقم <strong>${managerCin}</strong>، مسيراً وحيداً للتعاونية لمدة [${managerMandate}]، مع تخويله جميع الصلاحيات القانونية لتسيير شؤون التعاونية وتمثيلها.</li>
           <li><strong>القرار الرابع:</strong> تفويض مسير التعاونية السيد <strong>${managerName}</strong>، الحامل للبطاقة الوطنية للتعريف رقم <strong>${managerCin}</strong>، للقيام بجميع الإجراءات اللازمة لفتح الحساب البنكي المجمد، وإيداع ملف التأسيس لدى السلطة المحلية، وتسجيل التعاونية بالسجل المحلي للتعاونيات بالمحكمة الابتدائية.</li>
@@ -233,12 +237,12 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
         <div style="text-align: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 18px;">
           <p style="font-size: 13px; color: #475569; margin: 0;">المملكة المغربية — وفق مقتضيات القانون رقم 112.12 المتعلق بالتعاونيات</p>
           <h1 style="font-size: 22px; font-weight: 800; color: #1e3a8a; margin: 8px 0 4px 0;">النظام الأساسي للتعاونية</h1>
-          <p style="font-size: 16px; font-weight: bold; color: #0284c7; margin: 0;">تعاونية: ${coopName}</p>
+          <p style="font-size: 16px; font-weight: bold; color: #0284c7; margin: 0;">تعاونية: ${cleanCoopName}</p>
         </div>
 
         <h3 style="font-size: 16px; color: #1e3a8a; border-bottom: 1px solid #cbd5e1; padding-bottom: 4px;">الباب الأول: التأسيس، التسمية، المقر، المدة، والغرض</h3>
         <p style="font-size: 13px; text-align: justify; margin: 6px 0;">
-          <strong>المادة 1 (التأسيس والتسمية):</strong> تؤسس بين الموقعين على هذا النظام الأساسي والمنخرطين لاحقاً، تعاونية خاضعة لمقتضيات القانون رقم 112.12 المتعلق بالتعاونيات، تحمل تسمية: <strong>${coopName}</strong>.
+          <strong>المادة 1 (التأسيس والتسمية):</strong> تؤسس بين الموقعين على هذا النظام الأساسي والمنخرطين لاحقاً، تعاونية خاضعة لمقتضيات القانون رقم 112.12 المتعلق بالتعاونيات، تحمل تسمية: <strong>${fullCoopTitle}</strong>.
         </p>
         <p style="font-size: 13px; text-align: justify; margin: 6px 0;">
           <strong>المادة 2 (المقر الاجتماعي):</strong> يحدد المقر الاجتماعي للتعاونية بـ: <strong>${headquartersAddress}</strong>. ويمكن نقله إلى أي مكان آخر بقرار يتخذه الجمع العام.
@@ -338,7 +342,7 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
         <div style="text-align: center; border-bottom: 2px solid #1e3a8a; padding-bottom: 12px; margin-bottom: 18px;">
           <p style="font-size: 13px; color: #475569; margin: 0;">المملكة المغربية — ملف تأسيس تعاونية وفق القانون رقم 112.12</p>
           <h1 style="font-size: 22px; font-weight: 800; color: #1e3a8a; margin: 8px 0 4px 0;">لائحة الأعضاء المؤسسين المكتتبين في رأس المال</h1>
-          <p style="font-size: 16px; font-weight: bold; color: #0284c7; margin: 0;">تعاونية: ${coopName}</p>
+          <p style="font-size: 16px; font-weight: bold; color: #0284c7; margin: 0;">تعاونية: ${cleanCoopName}</p>
         </div>
 
         <div style="background-color: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 15px; margin-bottom: 15px; font-size: 14px; display: flex; justify-content: space-around; font-weight: bold;">
@@ -403,7 +407,7 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
         </div>
 
         <p style="font-size: 15px; text-align: justify; margin-bottom: 25px; line-height: 2.2; color: #000000;">
-          أصرح وألتزم بصفتي مالكاً (أو مستغلاً قانونياً) للعقار الكائن بـ: <strong>${headquartersAddress}</strong>، بأنني أضع هذا المحل رهن إشارة <strong>تعاونية ${coopName}</strong>، في طور التأسيس، بصفة مجانية، وذلك لاتخاذه مقراً اجتماعياً لها ولمزاولة أنشطتها المنصوص عليها في نظامها الأساسي.
+          أصرح وألتزم بصفتي مالكاً للعقار الكائن بـ: <strong>${headquartersAddress}</strong>، بأنني أضع هذا المحل رهن إشارة <strong>${fullCoopTitle}</strong>، في طور التأسيس، بصفة مجانية، وذلك لاتخاذه مقراً اجتماعياً لها ولمزاولة أنشطتها المنصوص عليها في نظامها الأساسي.
         </p>
 
         <p style="font-size: 15px; text-align: justify; margin-bottom: 45px; line-height: 2.2; color: #000000;">
