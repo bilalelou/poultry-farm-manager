@@ -15,6 +15,7 @@ import {
   Settings,
   Users,
   Briefcase,
+  Building2,
   Menu,
   X,
   ChevronLeft,
@@ -29,6 +30,7 @@ import { cn } from '@/lib/utils';
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'لوحة القيادة', icon: LayoutDashboard },
   { href: '/flock', label: 'القطيع العام', icon: Users },
+  { href: '/cooperative', label: 'تسيير التعاونية', icon: Building2 },
   { href: '/investors', label: 'المستثمرون وقيمة المشروع', icon: Briefcase },
   { href: '/incubator', label: 'الفقاسة', icon: Egg },
   { href: '/rearing', label: 'التربية', icon: TrendingUp },

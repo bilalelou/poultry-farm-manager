@@ -215,3 +215,61 @@ model ValuationItem {
   notes       String?
   updatedAt   DateTime @updatedAt
 }
+
+// === تسيير التعاونية الفلاحية ===
+model CooperativeProfile {
+  id               Int      @id @default(autoincrement())
+  name             String   @default("التعاونية الفلاحية لتربية الدواجن")
+  registrationNo   String?
+  foundedDate      String?
+  headquarters     String?
+  activity         String   @default("تربية الدواجن وإنتاج البيض البلدي")
+  bankRib          String?
+  shareUnitValue   Float    @default(100)
+  legalReserveRate Float    @default(10)
+  notes            String?
+  updatedAt        DateTime @updatedAt
+}
+
+model CooperativeMember {
+  id          Int      @id @default(autoincrement())
+  fullName    String
+  cin         String?
+  phone       String?
+  role        String   @default("member") // president | vice_president | treasurer | secretary | member
+  joinDate    String
+  sharesCount Int      @default(1)
+  paidCapital Float    @default(0)
+  status      String   @default("active") // active | suspended | exited
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model CooperativeTransaction {
+  id            Int      @id @default(autoincrement())
+  date          String
+  type          String   // contribution | grant | coop_sale | coop_expense | admin_expense | profit_distribution
+  category      String   @default("other") // shares | feed | equipment | eggs | subsidy | admin | other
+  memberId      Int?
+  memberName    String?
+  amount        Float
+  paymentMethod String   @default("cash") // cash | bank | check
+  referenceNo   String?
+  description   String
+  notes         String?
+  createdAt     DateTime @default(now())
+}
+
+model CooperativeMeeting {
+  id             Int      @id @default(autoincrement())
+  date           String
+  title          String
+  type           String   @default("board_meeting") // general_ordinary | general_extraordinary | board_meeting
+  attendeesCount Int      @default(0)
+  agenda         String
+  decisions      String?
+  status         String   @default("completed") // scheduled | completed
+  notes          String?
+  createdAt      DateTime @default(now())
+}

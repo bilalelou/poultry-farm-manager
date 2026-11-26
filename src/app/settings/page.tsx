@@ -57,6 +57,10 @@ export default function SettingsPage() {
       flockGroups: await db.flockGroups.toArray(),
       investors: await db.investors.toArray(),
       valuationItems: await db.valuationItems.toArray(),
+      cooperativeProfile: await db.cooperativeProfile.toArray(),
+      cooperativeMembers: await db.cooperativeMembers.toArray(),
+      cooperativeTransactions: await db.cooperativeTransactions.toArray(),
+      cooperativeMeetings: await db.cooperativeMeetings.toArray(),
       expansionPlans: await db.expansionPlans.toArray(),
       expansionPlanMonths: await db.expansionPlanMonths.toArray(),
       alerts: await db.alerts.toArray(),
@@ -86,6 +90,9 @@ export default function SettingsPage() {
       if (data.flockGroups) { await db.flockGroups.clear(); await db.flockGroups.bulkAdd(data.flockGroups); }
       if (data.investors) { await db.investors.clear(); await db.investors.bulkAdd(data.investors); }
       if (data.valuationItems) { await db.valuationItems.clear(); await db.valuationItems.bulkAdd(data.valuationItems); }
+      if (data.cooperativeMembers) { await db.cooperativeMembers.clear(); await db.cooperativeMembers.bulkAdd(data.cooperativeMembers); }
+      if (data.cooperativeTransactions) { await db.cooperativeTransactions.clear(); await db.cooperativeTransactions.bulkAdd(data.cooperativeTransactions); }
+      if (data.cooperativeMeetings) { await db.cooperativeMeetings.clear(); await db.cooperativeMeetings.bulkAdd(data.cooperativeMeetings); }
       if (data.settings && data.settings.length > 0) {
         await db.settings.clear();
         await db.settings.bulkAdd(data.settings);

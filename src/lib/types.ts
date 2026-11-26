@@ -296,6 +296,122 @@ export interface Alert {
   createdAt: string;
 }
 
+// === تسيير التعاونية ===
+export type CoopMemberRole = 'president' | 'vice_president' | 'treasurer' | 'secretary' | 'member';
+export type CoopMemberStatus = 'active' | 'suspended' | 'exited';
+export type CoopTxType =
+  | 'contribution'
+  | 'grant'
+  | 'coop_sale'
+  | 'coop_expense'
+  | 'admin_expense'
+  | 'profit_distribution';
+export type CoopTxCategory = 'shares' | 'feed' | 'equipment' | 'eggs' | 'subsidy' | 'admin' | 'other';
+export type CoopPaymentMethod = 'cash' | 'bank' | 'check';
+export type CoopMeetingType = 'general_ordinary' | 'general_extraordinary' | 'board_meeting';
+
+export interface CooperativeProfile {
+  id?: number;
+  name: string;
+  registrationNo?: string;
+  foundedDate?: string;
+  headquarters?: string;
+  activity: string;
+  bankRib?: string;
+  shareUnitValue: number;
+  legalReserveRate: number;
+  notes?: string;
+  updatedAt?: string;
+}
+
+export interface CooperativeMember {
+  id?: number;
+  fullName: string;
+  cin?: string;
+  phone?: string;
+  role: CoopMemberRole;
+  joinDate: string;
+  sharesCount: number;
+  paidCapital: number;
+  status: CoopMemberStatus;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CooperativeTransaction {
+  id?: number;
+  date: string;
+  type: CoopTxType;
+  category: CoopTxCategory;
+  memberId?: number;
+  memberName?: string;
+  amount: number;
+  paymentMethod: CoopPaymentMethod;
+  referenceNo?: string;
+  description: string;
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface CooperativeMeeting {
+  id?: number;
+  date: string;
+  title: string;
+  type: CoopMeetingType;
+  attendeesCount: number;
+  agenda: string;
+  decisions?: string;
+  status: 'scheduled' | 'completed';
+  notes?: string;
+  createdAt?: string;
+}
+
+export const COOP_ROLE_LABELS: Record<CoopMemberRole, string> = {
+  president: 'رئيس التعاونية',
+  vice_president: 'نائب الرئيس',
+  treasurer: 'أمين المال',
+  secretary: 'الكاتب العام',
+  member: 'عضو منخرط',
+};
+
+export const COOP_MEMBER_STATUS_LABELS: Record<CoopMemberStatus, string> = {
+  active: 'نشط',
+  suspended: 'معلق',
+  exited: 'منسحب',
+};
+
+export const COOP_TX_TYPE_LABELS: Record<CoopTxType, string> = {
+  contribution: 'اشتراك / مساهمة منخرط',
+  grant: 'دعم / منحة (INDH / فلاحي)',
+  coop_sale: 'مبيعات جماعية للتعاونية',
+  coop_expense: 'مشتريات جماعية (أعلاف / كتاكيت / معدات)',
+  admin_expense: 'مصاريف تسيير وإدارة',
+  profit_distribution: 'توزيع فائض وأرباح',
+};
+
+export const COOP_TX_CATEGORY_LABELS: Record<CoopTxCategory, string> = {
+  shares: 'حصص وأسهم',
+  feed: 'أعلاف جماعية',
+  equipment: 'معدات وتجهيزات',
+  eggs: 'تسويق البيض والدجاج',
+  subsidy: 'دعم وشراكات',
+  admin: 'تسيير ووثائق',
+  other: 'أخرى',
+};
+
+export const COOP_PAYMENT_LABELS: Record<CoopPaymentMethod, string> = {
+  cash: 'نقداً',
+  bank: 'تحويل بنكي',
+  check: 'شيك',
+};
+
+export const COOP_MEETING_TYPE_LABELS: Record<CoopMeetingType, string> = {
+  general_ordinary: 'جمع عام عادي',
+  general_extraordinary: 'جمع عام استثنائي',
+  board_meeting: 'اجتماع المكتب المسير',
+};
+
 // === أنواع مساعدة ===
 export interface MonthlyFlow {
   month: string;

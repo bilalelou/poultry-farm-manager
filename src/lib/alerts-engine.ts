@@ -154,3 +154,4 @@ export async function computeFarmAlerts(): Promise<SmartAlert[]> {
 
   return alerts;
 }
+

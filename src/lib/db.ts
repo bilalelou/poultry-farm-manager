@@ -15,6 +15,10 @@ import type {
   ValuationItem,
   ExpansionPlan,
   ExpansionPlanMonth,
+  CooperativeProfile,
+  CooperativeMember,
+  CooperativeTransaction,
+  CooperativeMeeting,
 } from './types';
 import { db as localDexieDb } from './db-local';
 
@@ -184,6 +188,42 @@ export const db = {
   }),
   expansionPlans: createTableHandler<ExpansionPlan>('expansionPlans', localDexieDb.expansionPlans),
   expansionPlanMonths: createTableHandler<ExpansionPlanMonth>('expansionPlanMonths', localDexieDb.expansionPlanMonths),
+  cooperativeProfile: createTableHandler<CooperativeProfile>('cooperativeProfile', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
+  cooperativeMembers: createTableHandler<CooperativeMember>('cooperativeMembers', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
+  cooperativeTransactions: createTableHandler<CooperativeTransaction>('cooperativeTransactions', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
+  cooperativeMeetings: createTableHandler<CooperativeMeeting>('cooperativeMeetings', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
   alerts: localDexieDb.alerts,
 };
 

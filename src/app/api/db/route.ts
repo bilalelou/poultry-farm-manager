@@ -305,6 +305,34 @@ export async function GET(request: Request) {
         });
         return NextResponse.json(items);
       }
+      case 'cooperativeProfile': {
+        let items = await prisma.cooperativeProfile.findMany({ orderBy: { id: 'asc' } });
+        if (items.length === 0) {
+          const created = await prisma.cooperativeProfile.create({
+            data: {
+              name: 'التعاونية الفلاحية لتربية الدواجن',
+              activity: 'تربية الدجاج البلدي، التفقيس، وإنتاج البيض',
+              shareUnitValue: 100,
+              legalReserveRate: 10,
+              foundedDate: new Date().toISOString().split('T')[0],
+            },
+          });
+          items = [created];
+        }
+        return NextResponse.json(items);
+      }
+      case 'cooperativeMembers': {
+        const items = await prisma.cooperativeMember.findMany({ orderBy: { createdAt: 'desc' } });
+        return NextResponse.json(items);
+      }
+      case 'cooperativeTransactions': {
+        const items = await prisma.cooperativeTransaction.findMany({ orderBy: { date: 'desc' } });
+        return NextResponse.json(items);
+      }
+      case 'cooperativeMeetings': {
+        const items = await prisma.cooperativeMeeting.findMany({ orderBy: { date: 'desc' } });
+        return NextResponse.json(items);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
@@ -388,6 +416,27 @@ export async function POST(request: Request) {
         const item = await prisma.expansionPlanMonth.create({ data: body });
         return NextResponse.json(item);
       }
+      case 'cooperativeProfile': {
+        const existing = await prisma.cooperativeProfile.findFirst();
+        if (existing) {
+          const updated = await prisma.cooperativeProfile.update({ where: { id: existing.id }, data: body });
+          return NextResponse.json(updated);
+        }
+        const created = await prisma.cooperativeProfile.create({ data: body });
+        return NextResponse.json(created);
+      }
+      case 'cooperativeMembers': {
+        const item = await prisma.cooperativeMember.create({ data: body });
+        return NextResponse.json(item);
+      }
+      case 'cooperativeTransactions': {
+        const item = await prisma.cooperativeTransaction.create({ data: body });
+        return NextResponse.json(item);
+      }
+      case 'cooperativeMeetings': {
+        const item = await prisma.cooperativeMeeting.create({ data: body });
+        return NextResponse.json(item);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
@@ -456,6 +505,22 @@ export async function PUT(request: Request) {
         });
         return NextResponse.json(updated);
       }
+      case 'cooperativeProfile': {
+        const updated = await prisma.cooperativeProfile.update({ where: { id }, data: cleanData });
+        return NextResponse.json(updated);
+      }
+      case 'cooperativeMembers': {
+        const updated = await prisma.cooperativeMember.update({ where: { id }, data: cleanData });
+        return NextResponse.json(updated);
+      }
+      case 'cooperativeTransactions': {
+        const updated = await prisma.cooperativeTransaction.update({ where: { id }, data: cleanData });
+        return NextResponse.json(updated);
+      }
+      case 'cooperativeMeetings': {
+        const updated = await prisma.cooperativeMeeting.update({ where: { id }, data: cleanData });
+        return NextResponse.json(updated);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
@@ -515,6 +580,18 @@ export async function DELETE(request: Request) {
       }
       case 'expansionPlanMonths': {
         await prisma.expansionPlanMonth.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'cooperativeMembers': {
+        await prisma.cooperativeMember.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'cooperativeTransactions': {
+        await prisma.cooperativeTransaction.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'cooperativeMeetings': {
+        await prisma.cooperativeMeeting.delete({ where: { id } });
         return NextResponse.json({ success: true });
       }
       default:
