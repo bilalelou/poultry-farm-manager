@@ -56,7 +56,7 @@ export default function CooperativePage() {
     name: 'تعاونية مراعي الوادي',
     registrationNo: '',
     foundedDate: todayISO(),
-    headquarters: '',
+    headquarters: 'دوار الخرابشة الأندلس، عين الشقف، مولاي يعقوب، فاس',
     activity: 'تربية الدواجن، تربية المواشي، إنتاج الأعلاف البديلة وتثمينها، وتسويق المنتوجات الفلاحية',
     bankRib: '',
     shareUnitValue: 100,

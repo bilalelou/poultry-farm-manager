@@ -50,7 +50,7 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
   const [assemblyTimeEnd, setAssemblyTimeEnd] = useState('12:30');
   const [cityPlace, setCityPlace] = useState('عين شقف');
   const [headquartersAddress, setHeadquartersAddress] = useState(
-    profile.headquarters || 'جماعة عين شقف، إقليم مولاي يعقوب'
+    profile.headquarters || 'دوار الخرابشة الأندلس، عين الشقف، مولاي يعقوب، فاس'
   );
 
   // Cooperative name helpers to prevent duplicate "تعاونية"
@@ -60,7 +60,7 @@ export default function CooperativeDocuments({ profile, members }: CooperativeDo
   // Property Owner state for Document 4 (Engagement)
   const [ownerName, setOwnerName] = useState('[الاسم الكامل لصاحب العقار]');
   const [ownerCin, setOwnerCin] = useState('[رقم البطاقة الوطنية]');
-  const [ownerAddress, setOwnerAddress] = useState('[العنوان الشخصي لصاحب العقار]');
+  const [ownerAddress, setOwnerAddress] = useState('دوار الخرابشة الأندلس، عين الشقف، مولاي يعقوب، فاس');
 
   // Capital details
   const [totalCapital, setTotalCapital] = useState(1000);
