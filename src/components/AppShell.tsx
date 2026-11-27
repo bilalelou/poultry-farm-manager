@@ -5,6 +5,8 @@ import { usePathname } from 'next/navigation';
 import { useState, useEffect, useRef } from 'react';
 import { seedDatabase } from '@/lib/seed';
 import { computeFarmAlerts, type SmartAlert } from '@/lib/alerts-engine';
+import { logSystemEvent } from '@/lib/logger';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import {
   LayoutDashboard,
   Egg,
@@ -24,6 +26,8 @@ import {
   CheckCircle2,
   Info,
   RefreshCw,
+  HandCoins,
+  Terminal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -36,7 +40,9 @@ const NAV_ITEMS = [
   { href: '/rearing', label: 'التربية', icon: TrendingUp },
   { href: '/production', label: 'الإنتاج والمبيعات', icon: CalendarDays },
   { href: '/expenses', label: 'المصاريف', icon: Wallet },
+  { href: '/debts', label: 'الديون التي عليّ', icon: HandCoins },
   { href: '/expansion', label: 'خطة التوسع', icon: Target },
+  { href: '/logs', label: 'سجل الأخطاء (Logs)', icon: Terminal },
   { href: '/settings', label: 'الإعدادات', icon: Settings },
 ];
 
@@ -62,8 +68,36 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    // التأكد من ملء البيانات الأولية تلقائياً في أي متصفح جديد
+    // التأكد من ملء البيانات الأولية تلقائياً مرة واحدة عند فتح التطبيق
     seedDatabase(false);
+
+    // التقاط الأخطاء غير المتوقعة في المتصفح وتسجيلها في Logs تلقائياً
+    function onWindowError(event: ErrorEvent) {
+      logSystemEvent({
+        level: 'error',
+        source: 'client',
+        message: event.message || 'Uncaught window error',
+        details: `${event.filename || ''}:${event.lineno || 0}:${event.colno || 0}\n${event.error?.stack || ''}`,
+      });
+    }
+    function onUnhandledRejection(event: PromiseRejectionEvent) {
+      const reason = event.reason;
+      logSystemEvent({
+        level: 'error',
+        source: 'client',
+        message: reason?.message || String(reason || 'Unhandled Promise Rejection'),
+        details: reason?.stack ? String(reason.stack) : undefined,
+      });
+    }
+    window.addEventListener('error', onWindowError);
+    window.addEventListener('unhandledrejection', onUnhandledRejection);
+    return () => {
+      window.removeEventListener('error', onWindowError);
+      window.removeEventListener('unhandledrejection', onUnhandledRejection);
+    };
+  }, []);
+
+  useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('dismissed_farm_alerts') || '[]');
       if (Array.isArray(saved)) setDismissedIds(saved);
@@ -295,7 +329,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         {/* Page Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6" suppressHydrationWarning>
-          {children}
+          <ErrorBoundary>{children}</ErrorBoundary>
         </main>
       </div>
     </div>

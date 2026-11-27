@@ -9,7 +9,7 @@ import { db, getSettings } from '@/lib/db';
 import { transferRearingBatchToProduction } from '@/lib/transfer-helpers';
 import type { RearingBatch, RearingWeeklyLog, Settings } from '@/lib/types';
 import { DEFAULT_VACCINATION_SCHEDULE } from '@/lib/types';
-import { formatCurrency, formatPercent, formatDate, getFeedPhase, getFeedPhaseName, getRearingWeek, cn } from '@/lib/utils';
+import { formatCurrency, formatPercent, formatDate, getFeedPhase, getFeedPhaseName, getDynamicAgeWeeks, getDaysUntilWeek, cn } from '@/lib/utils';
 import { ArrowRight, Plus, Syringe, Truck, DollarSign } from 'lucide-react';
 
 export default function RearingDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -108,6 +108,8 @@ export default function RearingDetailPage({ params }: { params: Promise<{ id: st
   }
 
   const sym = settings?.currencySymbol || 'د.م';
+  const liveAgeWeeks = getDynamicAgeWeeks(batch.currentAgeWeeks, batch.ageReferenceDate || batch.createdAt, batch.startDate);
+  const daysToWeek21 = getDaysUntilWeek(21, batch.currentAgeWeeks, batch.ageReferenceDate || batch.createdAt, batch.startDate);
   const totalRearingCost = (batch.initialChickCount * batch.initialCostPerChick) + logs.reduce((s, l) => s + l.totalWeeklyCost, 0);
   const totalMalesSaleValue = logs.reduce((s, l) => s + l.malesSaleValue, 0);
   const totalMalesSold = logs.reduce((s, l) => s + l.malesSold, 0);
@@ -148,13 +150,19 @@ export default function RearingDetailPage({ params }: { params: Promise<{ id: st
             <p className="text-xs text-emerald-700 font-medium">العدد السليم (المتبقي)</p>
             <p className="text-2xl font-black text-emerald-700">{finalRemaining} طير</p>
           </div>
-          <div><p className="text-xs text-slate-500">العمر الحالي</p><p className="text-xl font-bold text-blue-700">{Math.min(batch.currentAgeWeeks || getRearingWeek(batch.startDate), 20)} / 20 أسبوع</p></div>
+          <div>
+            <p className="text-xs text-slate-500">العمر الحالي</p>
+            <p className="text-xl font-bold text-blue-700">{Math.min(liveAgeWeeks, 21)} / 21 أسبوع</p>
+            {batch.status !== 'transferred' && daysToWeek21 > 0 && (
+              <p className="text-[11px] text-blue-600">متبقي {daysToWeek21} يوم للنقل (أسبوع 21)</p>
+            )}
+          </div>
           <div><p className="text-xs text-slate-500">الذكور المباعة</p><p className="text-xl font-bold text-blue-600">{totalMalesSold}</p></div>
         </div>
       </Card>
 
       {/* Add Weekly Log */}
-      {batch.status === 'rearing' && nextWeek <= 20 && (
+      {batch.status === 'rearing' && nextWeek <= 21 && (
         <div className="mb-6">
           <button onClick={() => setShowLogForm(true)} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition">
             <Plus className="w-5 h-5" />
@@ -266,7 +274,7 @@ export default function RearingDetailPage({ params }: { params: Promise<{ id: st
 
       {/* Transfer Button */}
       {batch.status !== 'transferred' &&
-        (batch.status === 'completed' || (batch.currentAgeWeeks || getRearingWeek(batch.startDate)) >= 20) && (
+        (batch.status === 'completed' || liveAgeWeeks >= 20) && (
           <Card className="p-5 bg-gradient-to-l from-emerald-50 to-white">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               <div>

@@ -55,9 +55,11 @@ model RearingBatch {
   currentHealthyCount Int?
   mortalityCount      Int?                @default(0)
   malesCount          Int?                @default(0)
-  currentAgeWeeks     Int?                @default(1)
-  status              String              @default("rearing") // rearing | completed | transferred
-  notes               String?
+  currentAgeWeeks          Int?                @default(1)
+  ageReferenceDate         String?
+  status                   String              @default("rearing") // rearing | completed | transferred
+  autoTransferToProduction Boolean             @default(true)
+  notes                    String?
   createdAt           DateTime            @default(now())
   weeklyLogs          RearingWeeklyLog[]
 }
@@ -100,15 +102,110 @@ model DailyProduction {
 }
 
 model Sale {
+  id            Int      @id @default(autoincrement())
+  date          String
+  type          String   // eggs | fertilizedEggs | chicks | culledHens | manure | males
+  quantity      Float
+  unitType      String   // unit | tray
+  unitPrice     Float
+  total         Float
+  buyerName     String?
+  customerId    Int?
+  paidAmount    Float?
+  paymentStatus String   @default("paid") // paid | partial | unpaid
+  notes         String?
+}
+
+model Customer {
   id        Int      @id @default(autoincrement())
-  date      String
-  type      String   // eggs | fertilizedEggs | chicks | culledHens | manure | males
-  quantity  Float
-  unitType  String   // unit | tray
-  unitPrice Float
-  total     Float
-  buyerName String?
+  name      String
+  phone     String?
+  address   String?
   notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DebtPayment {
+  id            Int      @id @default(autoincrement())
+  date          String
+  customerId    Int?
+  customerName  String
+  saleId        Int?
+  amount        Float
+  paymentMethod String   @default("cash") // cash | bank | check
+  notes         String?
+  createdAt     DateTime @default(now())
+}
+
+// === الديون التي على المزرعة (الالتزامات) ===
+model PayableDebt {
+  id           Int      @id @default(autoincrement())
+  date         String
+  creditorName String
+  phone        String?
+  category     String   @default("feed") // feed | equipment | chicks | medicine | loan | rent | other
+  description  String
+  totalAmount  Float
+  paidAmount   Float    @default(0)
+  dueDate      String?
+  status       String   @default("unpaid") // unpaid | partial | paid
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model PayablePayment {
+  id            Int      @id @default(autoincrement())
+  debtId        Int
+  date          String
+  amount        Float
+  paymentMethod String   @default("cash") // cash | bank | check
+  notes         String?
+  createdAt     DateTime @default(now())
+}
+
+// === مخزون وحركات العلف ===
+model FeedMovement {
+  id           Int      @id @default(autoincrement())
+  date         String
+  movementType String   // purchase | consumption | adjustment
+  feedType     String   @default("layer") // starter | grower | preLayer | layer
+  quantityKg   Float
+  cost         Float    @default(0)
+  expenseId    Int?
+  notes        String?
+  createdAt    DateTime @default(now())
+}
+
+// === سجل أخطاء النظام والتتبع ===
+model SystemLog {
+  id        Int      @id @default(autoincrement())
+  timestamp String
+  level     String   @default("error") // error | warn | info
+  source    String   // client | api | ui | db
+  page      String?
+  message   String
+  details   String?
+  resolved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// === تاريخ تحركات القطيع ===
+model FlockMovement {
+  id           Int      @id @default(autoincrement())
+  date         String
+  flockGroupId Int?
+  flockName    String
+  movementType String   // transfer | addition | mortality | sale | culling
+  fromLocation String?
+  toLocation   String?
+  malesCount   Int      @default(0)
+  femalesCount Int      @default(0)
+  totalCount   Int
+  reason       String?
+  notes        String?
+  createdAt    DateTime @default(now())
 }
 
 model Expense {
@@ -183,6 +280,7 @@ model FlockGroup {
   malesCount  Int      @default(0) // عدد الذكور
   femalesCount Int     @default(0) // عدد الإناث
   ageWeeks    Int      @default(20) // العمر بالأسابيع
+  ageReferenceDate String?
   housing     String?  // رقم أو اسم العنبر / الحظيرة
   healthStatus String  @default("ممتازة") // ممتازة، جيدة، تحت العلاج
   notes       String?
@@ -219,11 +317,11 @@ model ValuationItem {
 // === تسيير التعاونية الفلاحية ===
 model CooperativeProfile {
   id               Int      @id @default(autoincrement())
-  name             String   @default("التعاونية الفلاحية لتربية الدواجن")
+  name             String   @default("تعاونية مراعي الوادي")
   registrationNo   String?
   foundedDate      String?
-  headquarters     String?
-  activity         String   @default("تربية الدواجن وإنتاج البيض البلدي")
+  headquarters     String?  @default("دوار الخرابشة الأندلس، عين الشقف، مولاي يعقوب، فاس")
+  activity         String   @default("تربية الدواجن، تربية المواشي، إنتاج الأعلاف البديلة وتثمينها، وتسويق المنتوجات الفلاحية")
   bankRib          String?
   shareUnitValue   Float    @default(100)
   legalReserveRate Float    @default(10)

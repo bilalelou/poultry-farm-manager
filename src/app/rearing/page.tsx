@@ -5,11 +5,11 @@ import Link from 'next/link';
 import AppShell from '@/components/AppShell';
 import { Card, Badge, Modal, EmptyState, LoadingSpinner, ConfirmDialog } from '@/components/ui';
 import { db } from '@/lib/db';
-import { transferRearingBatchToProduction } from '@/lib/transfer-helpers';
+import { transferRearingBatchToProduction, checkAndRunAutoTransfers } from '@/lib/transfer-helpers';
 import type { RearingBatch, RearingStatus } from '@/lib/types';
 import { REARING_STATUS_LABELS } from '@/lib/types';
-import { formatDate, getRearingWeek, getFeedPhase, getFeedPhaseName, generateBatchCode, todayISO, cn } from '@/lib/utils';
-import { TrendingUp, Bird, Plus, Edit2, Trash2, Truck } from 'lucide-react';
+import { formatDate, getDynamicAgeWeeks, getDaysUntilWeek, getFeedPhase, getFeedPhaseName, generateBatchCode, todayISO, cn } from '@/lib/utils';
+import { TrendingUp, Bird, Plus, Edit2, Trash2, Truck, Clock, CheckCircle2 } from 'lucide-react';
 
 const statusColors = { rearing: 'amber' as const, completed: 'green' as const, transferred: 'blue' as const };
 
@@ -21,6 +21,8 @@ export default function RearingListPage() {
   // Modal states
   const [showForm, setShowForm] = useState(false);
   const [editingBatchId, setEditingBatchId] = useState<number | null>(null);
+  const [originalAgeWeeks, setOriginalAgeWeeks] = useState<number | null>(null);
+  const [originalAgeRefDate, setOriginalAgeRefDate] = useState<string | undefined>(undefined);
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null);
 
   // Form state
@@ -34,11 +36,13 @@ export default function RearingListPage() {
     malesCount: 2,
     currentAgeWeeks: 5,
     status: 'rearing' as RearingStatus,
+    autoTransferToProduction: true,
     notes: '',
   });
 
   // Transfer Modal state
   const [transferBatch, setTransferBatch] = useState<RearingBatch | null>(null);
+  const [autoTransferredNotices, setAutoTransferredNotices] = useState<string[]>([]);
 
   useEffect(() => {
     loadData();
@@ -46,6 +50,10 @@ export default function RearingListPage() {
 
   async function loadData() {
     try {
+      const autoCodes = await checkAndRunAutoTransfers();
+      if (autoCodes.length > 0) {
+        setAutoTransferredNotices(prev => [...new Set([...prev, ...autoCodes])]);
+      }
       const b = await db.rearingBatches.toArray();
       b.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime());
       setBatches(b);
@@ -58,6 +66,8 @@ export default function RearingListPage() {
 
   function openCreateModal() {
     setEditingBatchId(null);
+    setOriginalAgeWeeks(null);
+    setOriginalAgeRefDate(undefined);
     setForm({
       batchCode: generateBatchCode('T'),
       startDate: todayISO(),
@@ -68,6 +78,7 @@ export default function RearingListPage() {
       malesCount: 0,
       currentAgeWeeks: 1,
       status: 'rearing',
+      autoTransferToProduction: true,
       notes: '',
     });
     setShowForm(true);
@@ -80,7 +91,9 @@ export default function RearingListPage() {
     const initial = batch.initialChickCount || 0;
     const mortality = batch.mortalityCount ?? 0;
     const healthy = batch.currentHealthyCount ?? (initial - mortality);
-    const age = batch.currentAgeWeeks || getRearingWeek(batch.startDate);
+    const age = getDynamicAgeWeeks(batch.currentAgeWeeks, batch.ageReferenceDate || batch.createdAt, batch.startDate);
+    setOriginalAgeWeeks(age);
+    setOriginalAgeRefDate(batch.ageReferenceDate);
     setForm({
       batchCode: batch.batchCode,
       startDate: batch.startDate,
@@ -91,6 +104,7 @@ export default function RearingListPage() {
       malesCount: batch.malesCount ?? 0,
       currentAgeWeeks: age,
       status: batch.status,
+      autoTransferToProduction: batch.autoTransferToProduction !== false,
       notes: batch.notes || '',
     });
     setShowForm(true);
@@ -123,6 +137,12 @@ export default function RearingListPage() {
   }
 
   async function saveBatch() {
+    const newAge = Number(form.currentAgeWeeks);
+    const ageRefDate =
+      !editingBatchId || originalAgeWeeks !== newAge || !originalAgeRefDate
+        ? todayISO()
+        : originalAgeRefDate;
+
     const dataToSave = {
       batchCode: form.batchCode,
       startDate: form.startDate,
@@ -131,20 +151,29 @@ export default function RearingListPage() {
       currentHealthyCount: Number(form.currentHealthyCount),
       mortalityCount: Number(form.mortalityCount),
       malesCount: Number(form.malesCount),
-      currentAgeWeeks: Number(form.currentAgeWeeks),
+      currentAgeWeeks: newAge,
+      ageReferenceDate: ageRefDate,
       status: form.status,
+      autoTransferToProduction: form.autoTransferToProduction,
       notes: form.notes,
     };
 
     if (editingBatchId) {
       await db.rearingBatches.update(editingBatchId, dataToSave);
     } else {
-      await db.rearingBatches.add({
-        ...dataToSave,
-        createdAt: todayISO(),
-      });
+      await db.rearingBatches.add(dataToSave);
     }
     setShowForm(false);
+    loadData();
+  }
+
+  async function toggleAutoTransfer(batch: RearingBatch, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!batch.id) return;
+    await db.rearingBatches.update(batch.id, {
+      autoTransferToProduction: batch.autoTransferToProduction === false,
+    });
     loadData();
   }
 
@@ -191,6 +220,15 @@ export default function RearingListPage() {
         </button>
       </div>
 
+      {autoTransferredNotices.length > 0 && (
+        <div className="mb-6 p-4 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center gap-3 text-emerald-800">
+          <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
+          <div className="text-sm font-medium">
+            <strong>تم النقل التلقائي للإنتاج:</strong> أتمت الدفعة ({autoTransferredNotices.join('، ')}) الأسبوع 21 وتم نقل الإناث السليمة تلقائياً إلى قطيع الإنتاج والقطيع العام.
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2 mb-6">
         {(['all', 'rearing', 'completed', 'transferred'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)} className={cn('px-4 py-2 rounded-lg text-sm font-medium transition', filter === f ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50')}>
@@ -209,7 +247,8 @@ export default function RearingListPage() {
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(batch => {
-            const week = batch.currentAgeWeeks || getRearingWeek(batch.startDate);
+            const week = getDynamicAgeWeeks(batch.currentAgeWeeks, batch.ageReferenceDate || batch.createdAt, batch.startDate);
+            const daysLeftTo21 = getDaysUntilWeek(21, batch.currentAgeWeeks, batch.ageReferenceDate || batch.createdAt, batch.startDate);
             const phase = getFeedPhase(week);
             return (
               <div key={batch.id} className="relative group">
@@ -222,11 +261,11 @@ export default function RearingListPage() {
                       </div>
                       <div className="mb-3">
                         <div className="flex justify-between items-center mb-1">
-                          <span className="text-xs text-slate-500">الأسبوع {Math.min(week, 20)} / 20</span>
+                          <span className="text-xs text-slate-500">الأسبوع {Math.min(week, 21)} / 21</span>
                           <Badge color={phase === 'starter' ? 'amber' : phase === 'grower' ? 'blue' : 'purple'}>{getFeedPhaseName(phase)}</Badge>
                         </div>
                         <div className="w-full bg-slate-100 rounded-full h-2">
-                          <div className="bg-blue-500 h-2 rounded-full transition-all" style={{ width: `${(Math.min(week, 20) / 20) * 100}%` }} />
+                          <div className="bg-blue-500 h-2 rounded-full transition-all" style={{ width: `${(Math.min(week, 21) / 21) * 100}%` }} />
                         </div>
                       </div>
                       <div className="space-y-1.5 text-sm text-slate-600">
@@ -235,6 +274,11 @@ export default function RearingListPage() {
                           <span>⏳ العمر الحالي</span>
                           <span className="font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">
                             {week} أسبوع
+                            {batch.status !== 'transferred' && daysLeftTo21 > 0 && (
+                              <span className="text-[10px] font-medium text-blue-600 mr-1">
+                                (متبقي {daysLeftTo21} يوم للأسبوع 21)
+                              </span>
+                            )}
                           </span>
                         </div>
                         <div className="flex justify-between"><span>🐥 العدد الابتدائي</span><span className="font-medium">{batch.initialChickCount} طير</span></div>
@@ -259,6 +303,29 @@ export default function RearingListPage() {
                           </div>
                         </div>
                         <div className="flex justify-between"><span>💰 تكلفة الطير الأولية</span><span className="font-medium">{batch.initialCostPerChick} د.م</span></div>
+                        {batch.status !== 'transferred' && (
+                          <div className="flex items-center justify-between pt-1">
+                            <span className="text-xs text-slate-500">النقل التلقائي (أسبوع 21):</span>
+                            <button
+                              type="button"
+                              onClick={(e) => toggleAutoTransfer(batch, e)}
+                              className={cn(
+                                'px-2 py-0.5 rounded-full text-[11px] font-bold transition',
+                                batch.autoTransferToProduction !== false
+                                  ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              )}
+                            >
+                              {batch.autoTransferToProduction !== false ? 'مفعّل ✓' : 'يدوي فقط'}
+                            </button>
+                          </div>
+                        )}
+                        {batch.status !== 'transferred' && week === 20 && batch.autoTransferToProduction !== false && (
+                          <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-[11px] text-amber-800 flex items-center gap-1.5 font-medium">
+                            <Clock className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                            <span>جاهزة للنقل — سيتم النقل تلقائياً عند إتمام الأسبوع 21 إذا لم تُنقل يدوياً.</span>
+                          </div>
+                        )}
                         {batch.notes && <p className="text-xs text-slate-400 mt-2 line-clamp-1">{batch.notes}</p>}
                       </div>
                     </div>
@@ -276,7 +343,7 @@ export default function RearingListPage() {
                           }}
                           className={cn(
                             "flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg font-bold transition",
-                            (batch.currentAgeWeeks || week) >= 20 || batch.status === 'completed'
+                            (week >= 20 || batch.status === 'completed')
                               ? "bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm animate-pulse"
                               : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200"
                           )}
@@ -369,6 +436,18 @@ export default function RearingListPage() {
               <option value="transferred">تم النقل للقطيع البياض</option>
             </select>
           </div>
+          <label className="flex items-center gap-2.5 p-3 bg-blue-50/60 border border-blue-200 rounded-xl cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.autoTransferToProduction}
+              onChange={e => setForm(p => ({ ...p, autoTransferToProduction: e.target.checked }))}
+              className="w-4 h-4 rounded text-blue-600"
+            />
+            <div className="text-xs">
+              <span className="font-bold text-slate-800 block">تفعيل النقل التلقائي للإنتاج في الأسبوع 21</span>
+              <span className="text-slate-500">يتم تنبيهك في الأسبوع 20، وإذا لم تُنقل خلال أسبوع تُنقل تلقائياً عند إتمام الأسبوع 21.</span>
+            </div>
+          </label>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">ملاحظات</label>
             <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" rows={2} />

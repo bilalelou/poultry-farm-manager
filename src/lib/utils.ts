@@ -162,6 +162,52 @@ export function getRearingWeek(startDate: string, explicitAgeWeeks?: number): nu
 }
 
 /**
+ * حساب العمر الحالي بالأسابيع بشكل ديناميكي يتقدم تلقائياً مع مرور الأيام
+ */
+export function getDynamicAgeWeeks(
+  baseAgeWeeks?: number | null,
+  referenceDate?: string | Date | null,
+  fallbackStartDate?: string
+): number {
+  if (typeof baseAgeWeeks === 'number' && baseAgeWeeks > 0) {
+    const refRaw = referenceDate || fallbackStartDate;
+    if (!refRaw) return baseAgeWeeks;
+    const refStr = refRaw instanceof Date ? refRaw.toISOString().slice(0, 10) : String(refRaw).slice(0, 10);
+    const refTime = new Date(refStr + 'T00:00:00Z').getTime();
+    const todayTime = new Date(todayISO() + 'T00:00:00Z').getTime();
+    if (isNaN(refTime) || isNaN(todayTime)) return baseAgeWeeks;
+    const diffDays = Math.max(0, Math.floor((todayTime - refTime) / (1000 * 60 * 60 * 24)));
+    return baseAgeWeeks + Math.floor(diffDays / 7);
+  }
+  return fallbackStartDate ? getRearingWeek(fallbackStartDate) : 1;
+}
+
+/**
+ * حساب الأيام المتبقية للوصول إلى أسبوع مستهدف (مثل الأسبوع 21)
+ */
+export function getDaysUntilWeek(
+  targetWeek: number,
+  baseAgeWeeks?: number | null,
+  referenceDate?: string | Date | null,
+  fallbackStartDate?: string
+): number {
+  if (typeof baseAgeWeeks === 'number' && baseAgeWeeks > 0) {
+    const refRaw = referenceDate || fallbackStartDate;
+    const totalDaysNeeded = Math.max(0, (targetWeek - baseAgeWeeks) * 7);
+    if (!refRaw) return totalDaysNeeded;
+    const refStr = refRaw instanceof Date ? refRaw.toISOString().slice(0, 10) : String(refRaw).slice(0, 10);
+    const refTime = new Date(refStr + 'T00:00:00Z').getTime();
+    const todayTime = new Date(todayISO() + 'T00:00:00Z').getTime();
+    if (isNaN(refTime) || isNaN(todayTime)) return totalDaysNeeded;
+    const diffDays = Math.max(0, Math.floor((todayTime - refTime) / (1000 * 60 * 60 * 24)));
+    return Math.max(0, totalDaysNeeded - diffDays);
+  }
+  if (!fallbackStartDate) return targetWeek * 7;
+  const currentWeek = getRearingWeek(fallbackStartDate);
+  return Math.max(0, (targetWeek - currentWeek) * 7);
+}
+
+/**
  * تلوين المؤشرات
  */
 export const STATUS_COLORS = {

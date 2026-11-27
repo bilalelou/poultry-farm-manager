@@ -14,7 +14,7 @@ import {
   type PendingRearingBatch,
   type ActiveIncubatorBatch,
 } from '@/lib/expansion-calculator';
-import { formatCurrency, formatNumber, todayISO, cn } from '@/lib/utils';
+import { formatCurrency, formatNumber, todayISO, getDynamicAgeWeeks, cn } from '@/lib/utils';
 import {
   Target,
   TrendingUp,
@@ -124,7 +124,7 @@ export default function ExpansionPage() {
         return {
           batchCode: r.batchCode || `R-${r.id}`,
           startDate: r.startDate,
-          currentAgeWeeks: r.currentAgeWeeks ?? undefined,
+          currentAgeWeeks: getDynamicAgeWeeks(r.currentAgeWeeks, r.ageReferenceDate || r.createdAt, r.startDate),
           femalesCount: Math.max(0, healthy - (r.malesCount || 0)),
           malesCount: r.malesCount || 0,
         };

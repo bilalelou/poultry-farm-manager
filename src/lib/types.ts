@@ -96,8 +96,10 @@ export interface RearingBatch {
   currentHealthyCount?: number; // العدد السليم / المتبقي حالياً (إجمالي الأحياء)
   mortalityCount?: number;      // عدد النفوق / الهالك
   malesCount?: number;          // عدد الذكور / الديوك
-  currentAgeWeeks?: number;     // عمر الدفعة بالأسابيع
+  currentAgeWeeks?: number;     // عمر الدفعة بالأسابيع عند التاريخ المرجعي
+  ageReferenceDate?: string;    // تاريخ تسجيل/تحديث العمر (ISO YYYY-MM-DD)
   status: RearingStatus;
+  autoTransferToProduction?: boolean; // النقل التلقائي للإنتاج عند إتمام الأسبوع 21
   notes?: string;
   createdAt: string;
 }
@@ -143,6 +145,7 @@ export interface DailyProduction {
 // === المبيعات ===
 export type SaleType = 'eggs' | 'fertilizedEggs' | 'chicks' | 'culledHens' | 'manure' | 'males';
 export type UnitType = 'unit' | 'tray';
+export type PaymentStatus = 'paid' | 'partial' | 'unpaid';
 
 export interface Sale {
   id?: number;
@@ -153,7 +156,121 @@ export interface Sale {
   unitPrice: number;
   total: number;
   buyerName?: string;
+  customerId?: number;
+  paidAmount?: number;
+  paymentStatus?: PaymentStatus;
   notes?: string;
+}
+
+export interface Customer {
+  id?: number;
+  name: string;
+  phone?: string;
+  address?: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DebtPayment {
+  id?: number;
+  date: string;
+  customerId?: number;
+  customerName: string;
+  saleId?: number;
+  amount: number;
+  paymentMethod: 'cash' | 'bank' | 'check';
+  notes?: string;
+  createdAt?: string;
+}
+
+export const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  paid: 'خالص',
+  partial: 'مدفوع جزئياً',
+  unpaid: 'كريدي',
+};
+
+// === الديون التي على المزرعة (الالتزامات) ===
+export type PayableCategory = 'feed' | 'equipment' | 'chicks' | 'medicine' | 'loan' | 'rent' | 'other';
+
+export interface PayableDebt {
+  id?: number;
+  date: string;
+  creditorName: string;
+  phone?: string;
+  category: PayableCategory;
+  description: string;
+  totalAmount: number;
+  paidAmount: number;
+  dueDate?: string;
+  status: PaymentStatus;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PayablePayment {
+  id?: number;
+  debtId: number;
+  date: string;
+  amount: number;
+  paymentMethod: 'cash' | 'bank' | 'check';
+  notes?: string;
+  createdAt?: string;
+}
+
+export const PAYABLE_CATEGORY_LABELS: Record<PayableCategory, string> = {
+  feed: 'أعلاف',
+  chicks: 'عتوكة / كتاكيت / بيض',
+  equipment: 'معدات وتجهيزات',
+  medicine: 'أدوية ولقاحات',
+  loan: 'سلف / قرض شخصي',
+  rent: 'إيجار / كهرباء / ماء',
+  other: 'أخرى',
+};
+
+// === مخزون العلف ===
+export type FeedStockType = 'starter' | 'grower' | 'preLayer' | 'layer';
+export type FeedMovementType = 'purchase' | 'consumption' | 'adjustment';
+
+export interface FeedMovement {
+  id?: number;
+  date: string;
+  movementType: FeedMovementType;
+  feedType: FeedStockType;
+  quantityKg: number;
+  cost: number;
+  expenseId?: number;
+  notes?: string;
+  createdAt?: string;
+}
+
+export const FEED_TYPE_LABELS: Record<FeedStockType, string> = {
+  starter: 'بادي (1-6 أسابيع)',
+  grower: 'نامي (7-18 أسبوع)',
+  preLayer: 'ما قبل البيض (19-20)',
+  layer: 'بياض',
+};
+
+export const FEED_MOVEMENT_LABELS: Record<FeedMovementType, string> = {
+  purchase: 'شراء / دخول للمخزون',
+  consumption: 'استهلاك القطيع',
+  adjustment: 'تعديل / جرد يدوي',
+};
+
+// === سجل أخطاء النظام ===
+export type SystemLogLevel = 'error' | 'warn' | 'info';
+
+export interface SystemLog {
+  id?: number;
+  timestamp: string;
+  level: SystemLogLevel;
+  source: 'client' | 'api' | 'ui' | 'db';
+  page?: string;
+  message: string;
+  details?: string;
+  resolved?: boolean;
+  createdAt?: string;
 }
 
 // === المصاريف ===
@@ -228,6 +345,7 @@ export interface FlockGroup {
   malesCount: number;
   femalesCount: number;
   ageWeeks: number;
+  ageReferenceDate?: string;
   housing?: string;
   healthStatus: string;
   notes?: string;
@@ -241,6 +359,32 @@ export const FLOCK_CATEGORY_LABELS: Record<FlockCategory, string> = {
   pullets: 'عتوكة (ما قبل البيض)',
   chicks: 'كتاكيت وحضانة',
   broilers: 'تسمين / لحم',
+};
+
+export type FlockMovementType = 'transfer' | 'addition' | 'mortality' | 'sale' | 'culling';
+
+export interface FlockMovement {
+  id?: number;
+  date: string;
+  flockGroupId?: number;
+  flockName: string;
+  movementType: FlockMovementType;
+  fromLocation?: string;
+  toLocation?: string;
+  malesCount: number;
+  femalesCount: number;
+  totalCount: number;
+  reason?: string;
+  notes?: string;
+  createdAt?: string;
+}
+
+export const FLOCK_MOVEMENT_LABELS: Record<FlockMovementType, string> = {
+  transfer: 'نقل بين العنابر',
+  addition: 'إضافة / دخول للقطيع',
+  mortality: 'نفوق',
+  sale: 'بيع',
+  culling: 'استبعاد / فرز',
 };
 export type ExpansionSource = 'incubator' | 'purchased';
 export type ExpansionStrategy = 'incubator' | 'hybrid' | 'purchased' | 'pullets_100_full_inc' | 'staged_3m_learn_full_inc';

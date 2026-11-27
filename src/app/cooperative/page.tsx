@@ -175,11 +175,11 @@ export default function CooperativePage() {
         const p = profArr[0];
         setProfile({
           id: p.id,
-          name: p.name || 'التعاونية الفلاحية لتربية الدواجن',
+          name: p.name || 'تعاونية مراعي الوادي',
           registrationNo: p.registrationNo || '',
           foundedDate: p.foundedDate || todayISO(),
-          headquarters: p.headquarters || '',
-          activity: p.activity || 'تربية الدجاج البلدي، التفقيس، وإنتاج البيض',
+          headquarters: p.headquarters || 'دوار الخرابشة الأندلس، عين الشقف، مولاي يعقوب، فاس',
+          activity: p.activity || 'تربية الدواجن، تربية المواشي، إنتاج الأعلاف البديلة وتثمينها، وتسويق المنتوجات الفلاحية',
           bankRib: p.bankRib || '',
           shareUnitValue: p.shareUnitValue || 100,
           legalReserveRate: p.legalReserveRate ?? 10,

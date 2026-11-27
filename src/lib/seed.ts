@@ -11,13 +11,26 @@ import type {
   Settings,
 } from './types';
 
-export async function seedDatabase(forceReset: boolean = false) {
-  const existingBatches = await db.incubatorBatches.count();
-  
-  // إذا لم نطلب إعادة تعيين إجبارية وكانت هناك دفعات مسبقاً، نتوقف
-  if (existingBatches > 0 && !forceReset) return;
+let activeSeedPromise: Promise<void> | null = null;
 
-  console.log('🔄 جاري تنظيف وحقن البيانات الحقيقية...');
+export async function seedDatabase(forceReset: boolean = false): Promise<void> {
+  if (activeSeedPromise) {
+    return activeSeedPromise;
+  }
+
+  activeSeedPromise = (async () => {
+    try {
+      const [existingBatches, existingExpenses, existingProductions, existingSales] = await Promise.all([
+        db.incubatorBatches.count(),
+        db.expenses.count(),
+        db.dailyProduction.count(),
+        db.sales.count(),
+      ]);
+
+      // إذا لم نطلب إعادة تعيين إجبارية وكانت هناك بيانات مسبقاً، نتوقف
+      if ((existingBatches > 0 || existingExpenses > 0 || existingProductions > 0 || existingSales > 0) && !forceReset) return;
+
+      console.log('🔄 جاري تنظيف وحقن البيانات الحقيقية...');
 
   // 1. تفريغ الجداول من البيانات التجريبية القديمة
   await db.incubatorBatches.clear();
@@ -84,7 +97,7 @@ export async function seedDatabase(forceReset: boolean = false) {
     electricityCost: 60,
     cleaningCost: 20,
     notes: 'أول دفعة: 71 بيضة (8 من المزرعة + 63 شراء خارجي بسعر 3.5 درهم)',
-    createdAt: '2026-11-18',
+    createdAt: '2026-11-18T00:00:00.000Z',
   };
 
   const batchId = await db.incubatorBatches.add(realBatch);
@@ -101,7 +114,7 @@ export async function seedDatabase(forceReset: boolean = false) {
     currentAgeWeeks: 18,
     status: 'rearing',
     notes: 'شراء 36 عتوكة بـ 40 درهم للحبة، نفق منها 14 وتبقى 22 حبة سليمة (20 إناث + 2 ذكور) ستدخل الإنتاج قريباً',
-    createdAt: '2026-10-20',
+    createdAt: '2026-10-20T00:00:00.000Z',
   };
 
   await db.rearingBatches.add(rearingBatch);
@@ -180,7 +193,13 @@ export async function seedDatabase(forceReset: boolean = false) {
     },
   ];
 
-  await db.expenses.bulkAdd(realExpenses);
+      await db.expenses.bulkAdd(realExpenses);
 
-  console.log('✅ تم إدخال البيانات الحقيقية وتحديث الخطة بنجاح');
+      console.log('✅ تم إدخال البيانات الحقيقية وتحديث الخطة بنجاح');
+    } finally {
+      activeSeedPromise = null;
+    }
+  })();
+
+  return activeSeedPromise;
 }

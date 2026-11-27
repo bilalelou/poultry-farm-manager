@@ -4,7 +4,8 @@
 
 import { db } from './db';
 import type { RearingBatch } from './types';
-import { todayISO } from './utils';
+import { getDynamicAgeWeeks, todayISO } from './utils';
+import { logSystemEvent } from './logger';
 
 export interface TransferResult {
   femalesTransferred: number;
@@ -105,7 +106,8 @@ export async function transferRearingBatchToProduction(
         headCount: femalesCount,
         malesCount: 0,
         femalesCount,
-        ageWeeks: 20,
+        ageWeeks: 21,
+        ageReferenceDate: todayISO(),
         housing: 'عنبر 1 - البياضات',
         healthStatus: 'ممتازة',
         notes: `منقول من الدفعة ${batch.batchCode}`,
@@ -148,5 +150,44 @@ export async function transferRearingBatchToProduction(
     malesIsolated: malesCount,
     newActiveLayerCount: newTotal,
   };
+}
+
+let autoTransferLock: Promise<string[]> | null = null;
+
+/**
+ * فحص دفعات التربية التي أتمت الأسبوع 21 مع تفعيل النقل التلقائي ونقلها تلقائياً للإنتاج
+ */
+export async function checkAndRunAutoTransfers(): Promise<string[]> {
+  if (autoTransferLock) return autoTransferLock;
+
+  autoTransferLock = (async () => {
+    const transferredCodes: string[] = [];
+    try {
+      const batches = await db.rearingBatches.toArray();
+      for (const b of batches) {
+        if (b.status === 'transferred') continue;
+        if (b.autoTransferToProduction === false) continue;
+
+        const week = getDynamicAgeWeeks(b.currentAgeWeeks, b.ageReferenceDate || b.createdAt, b.startDate);
+        if (week >= 21) {
+          const res = await transferRearingBatchToProduction(b);
+          transferredCodes.push(b.batchCode);
+          await logSystemEvent({
+            level: 'info',
+            source: 'ui',
+            page: '/rearing',
+            message: `تم النقل التلقائي للدفعة ${b.batchCode} إلى الإنتاج عند إتمام الأسبوع ${week} (+${res.femalesTransferred} أنثى)`,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Auto-transfer check failed:', err);
+    } finally {
+      autoTransferLock = null;
+    }
+    return transferredCodes;
+  })();
+
+  return autoTransferLock;
 }
 

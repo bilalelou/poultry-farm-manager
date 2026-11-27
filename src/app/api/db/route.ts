@@ -2,6 +2,26 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { generateStrategicExpansionPlan } from '@/lib/expansion-calculator';
 import type { Settings } from '@/lib/types';
+import { getDynamicAgeWeeks } from '@/lib/utils';
+
+async function recordServerError(method: string, resource: string | null, err: any) {
+  if (resource === 'systemLogs') return;
+  try {
+    await prisma.systemLog.create({
+      data: {
+        timestamp: new Date().toISOString(),
+        level: 'error',
+        source: 'api',
+        page: `/api/db?resource=${resource || 'unknown'} (${method})`,
+        message: err?.message || 'Unknown server error',
+        details: err?.stack ? String(err.stack).slice(0, 3000) : undefined,
+        resolved: false,
+      },
+    });
+  } catch {
+    // Ignore logging errors so we never mask the original API response
+  }
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -241,7 +261,7 @@ export async function GET(request: Request) {
                 return {
                   batchCode: r.batchCode || `R-${r.id}`,
                   startDate: typeof r.startDate === 'string' ? r.startDate : new Date(r.startDate).toISOString().split('T')[0],
-                  currentAgeWeeks: r.currentAgeWeeks ?? undefined,
+                  currentAgeWeeks: getDynamicAgeWeeks(r.currentAgeWeeks, r.ageReferenceDate || r.createdAt, typeof r.startDate === 'string' ? r.startDate : undefined),
                   femalesCount: Math.max(0, healthy - (r.malesCount || 0)),
                   malesCount: r.malesCount || 0,
                 };
@@ -310,8 +330,9 @@ export async function GET(request: Request) {
         if (items.length === 0) {
           const created = await prisma.cooperativeProfile.create({
             data: {
-              name: 'التعاونية الفلاحية لتربية الدواجن',
-              activity: 'تربية الدجاج البلدي، التفقيس، وإنتاج البيض',
+              name: 'تعاونية مراعي الوادي',
+              headquarters: 'دوار الخرابشة الأندلس، عين الشقف، مولاي يعقوب، فاس',
+              activity: 'تربية الدواجن، تربية المواشي، إنتاج الأعلاف البديلة وتثمينها، وتسويق المنتوجات الفلاحية',
               shareUnitValue: 100,
               legalReserveRate: 10,
               foundedDate: new Date().toISOString().split('T')[0],
@@ -333,10 +354,71 @@ export async function GET(request: Request) {
         const items = await prisma.cooperativeMeeting.findMany({ orderBy: { date: 'desc' } });
         return NextResponse.json(items);
       }
+      case 'customers': {
+        const items = await prisma.customer.findMany({ orderBy: { name: 'asc' } });
+        return NextResponse.json(items);
+      }
+      case 'debtPayments': {
+        const items = await prisma.debtPayment.findMany({ orderBy: { date: 'desc' } });
+        return NextResponse.json(items);
+      }
+      case 'payableDebts': {
+        const items = await prisma.payableDebt.findMany({ orderBy: { date: 'desc' } });
+        return NextResponse.json(items);
+      }
+      case 'payablePayments': {
+        const items = await prisma.payablePayment.findMany({ orderBy: { date: 'desc' } });
+        return NextResponse.json(items);
+      }
+      case 'feedMovements': {
+        let items = await prisma.feedMovement.findMany({ orderBy: { date: 'desc' } });
+        if (items.length === 0) {
+          const feedExpenses = await prisma.expense.findMany({ where: { category: 'feed' } });
+          if (feedExpenses.length > 0) {
+            const initialMovements = feedExpenses.map(e => {
+              // تقدير الكمية بالكيلو من الوصف أو السعر (مثلاً كيس 50 كغ بـ 250 د.م)
+              const kgMatch = e.description.match(/(\d+(?:\.\d+)?)\s*(?:كغ|kg)/i);
+              const qtyKg = kgMatch
+                ? e.quantity * Number(kgMatch[1])
+                : e.unitPrice >= 100
+                  ? e.quantity * 50
+                  : e.quantity;
+              return {
+                date: e.date,
+                movementType: 'purchase',
+                feedType: e.description.includes('بادي')
+                  ? 'starter'
+                  : e.description.includes('نامي')
+                    ? 'grower'
+                    : 'layer',
+                quantityKg: qtyKg,
+                cost: e.total,
+                expenseId: e.id,
+                notes: e.description,
+              };
+            });
+            await prisma.feedMovement.createMany({ data: initialMovements });
+            items = await prisma.feedMovement.findMany({ orderBy: { date: 'desc' } });
+          }
+        }
+        return NextResponse.json(items);
+      }
+      case 'systemLogs': {
+        const items = await prisma.systemLog.findMany({
+          orderBy: { id: 'desc' },
+          take: 200,
+        });
+        return NextResponse.json(items);
+      }
+      case 'flockMovements': {
+        const items = await prisma.flockMovement.findMany({ orderBy: { date: 'desc' } });
+        return NextResponse.json(items);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
   } catch (err: any) {
+    await recordServerError('GET', resource, err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
@@ -437,10 +519,39 @@ export async function POST(request: Request) {
         const item = await prisma.cooperativeMeeting.create({ data: body });
         return NextResponse.json(item);
       }
+      case 'customers': {
+        const item = await prisma.customer.create({ data: body });
+        return NextResponse.json(item);
+      }
+      case 'debtPayments': {
+        const item = await prisma.debtPayment.create({ data: body });
+        return NextResponse.json(item);
+      }
+      case 'payableDebts': {
+        const item = await prisma.payableDebt.create({ data: body });
+        return NextResponse.json(item);
+      }
+      case 'payablePayments': {
+        const item = await prisma.payablePayment.create({ data: body });
+        return NextResponse.json(item);
+      }
+      case 'feedMovements': {
+        const item = await prisma.feedMovement.create({ data: body });
+        return NextResponse.json(item);
+      }
+      case 'systemLogs': {
+        const item = await prisma.systemLog.create({ data: body });
+        return NextResponse.json(item);
+      }
+      case 'flockMovements': {
+        const item = await prisma.flockMovement.create({ data: body });
+        return NextResponse.json(item);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
   } catch (err: any) {
+    await recordServerError('POST', resource, err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
@@ -521,10 +632,39 @@ export async function PUT(request: Request) {
         const updated = await prisma.cooperativeMeeting.update({ where: { id }, data: cleanData });
         return NextResponse.json(updated);
       }
+      case 'customers': {
+        const updated = await prisma.customer.update({ where: { id }, data: cleanData });
+        return NextResponse.json(updated);
+      }
+      case 'debtPayments': {
+        const updated = await prisma.debtPayment.update({ where: { id }, data: cleanData });
+        return NextResponse.json(updated);
+      }
+      case 'payableDebts': {
+        const updated = await prisma.payableDebt.update({ where: { id }, data: cleanData });
+        return NextResponse.json(updated);
+      }
+      case 'payablePayments': {
+        const updated = await prisma.payablePayment.update({ where: { id }, data: cleanData });
+        return NextResponse.json(updated);
+      }
+      case 'feedMovements': {
+        const updated = await prisma.feedMovement.update({ where: { id }, data: cleanData });
+        return NextResponse.json(updated);
+      }
+      case 'systemLogs': {
+        const updated = await prisma.systemLog.update({ where: { id }, data: cleanData });
+        return NextResponse.json(updated);
+      }
+      case 'flockMovements': {
+        const updated = await prisma.flockMovement.update({ where: { id }, data: cleanData });
+        return NextResponse.json(updated);
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
   } catch (err: any) {
+    await recordServerError('PUT', resource, err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
@@ -532,9 +672,50 @@ export async function PUT(request: Request) {
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
   const resource = searchParams.get('resource');
+  const clearAll = searchParams.get('clear') === 'true';
   const id = Number(searchParams.get('id'));
 
   try {
+    if (clearAll) {
+      switch (resource) {
+        case 'settings': await prisma.settings.deleteMany({}); break;
+        case 'incubatorBatches': await prisma.incubatorBatch.deleteMany({}); break;
+        case 'rearingBatches':
+          await prisma.rearingWeeklyLog.deleteMany({});
+          await prisma.rearingBatch.deleteMany({});
+          break;
+        case 'rearingWeeklyLogs': await prisma.rearingWeeklyLog.deleteMany({}); break;
+        case 'dailyProduction': await prisma.dailyProduction.deleteMany({}); break;
+        case 'sales': await prisma.sale.deleteMany({}); break;
+        case 'expenses': await prisma.expense.deleteMany({}); break;
+        case 'flockGroups': await prisma.flockGroup.deleteMany({}); break;
+        case 'investors': await prisma.investor.deleteMany({}); break;
+        case 'valuationItems': await prisma.valuationItem.deleteMany({}); break;
+        case 'expansionPlans':
+          await prisma.expansionPlanMonth.deleteMany({});
+          await prisma.expansionPlan.deleteMany({});
+          break;
+        case 'expansionPlanMonths': await prisma.expansionPlanMonth.deleteMany({}); break;
+        case 'cooperativeProfile': await prisma.cooperativeProfile.deleteMany({}); break;
+        case 'cooperativeMembers': await prisma.cooperativeMember.deleteMany({}); break;
+        case 'cooperativeTransactions': await prisma.cooperativeTransaction.deleteMany({}); break;
+        case 'cooperativeMeetings': await prisma.cooperativeMeeting.deleteMany({}); break;
+        case 'customers': await prisma.customer.deleteMany({}); break;
+        case 'debtPayments': await prisma.debtPayment.deleteMany({}); break;
+        case 'payableDebts':
+          await prisma.payablePayment.deleteMany({});
+          await prisma.payableDebt.deleteMany({});
+          break;
+        case 'payablePayments': await prisma.payablePayment.deleteMany({}); break;
+        case 'feedMovements': await prisma.feedMovement.deleteMany({}); break;
+        case 'systemLogs': await prisma.systemLog.deleteMany({}); break;
+        case 'flockMovements': await prisma.flockMovement.deleteMany({}); break;
+        default:
+          return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
+      }
+      return NextResponse.json({ success: true, cleared: true });
+    }
+
     switch (resource) {
       case 'incubatorBatches': {
         await prisma.incubatorBatch.delete({ where: { id } });
@@ -594,10 +775,40 @@ export async function DELETE(request: Request) {
         await prisma.cooperativeMeeting.delete({ where: { id } });
         return NextResponse.json({ success: true });
       }
+      case 'customers': {
+        await prisma.customer.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'debtPayments': {
+        await prisma.debtPayment.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'payableDebts': {
+        await prisma.payablePayment.deleteMany({ where: { debtId: id } });
+        await prisma.payableDebt.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'payablePayments': {
+        await prisma.payablePayment.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'feedMovements': {
+        await prisma.feedMovement.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'systemLogs': {
+        await prisma.systemLog.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
+      case 'flockMovements': {
+        await prisma.flockMovement.delete({ where: { id } });
+        return NextResponse.json({ success: true });
+      }
       default:
         return NextResponse.json({ error: 'Unknown resource' }, { status: 400 });
     }
   } catch (err: any) {
+    await recordServerError('DELETE', resource, err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }

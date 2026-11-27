@@ -19,8 +19,16 @@ import type {
   CooperativeMember,
   CooperativeTransaction,
   CooperativeMeeting,
+  Customer,
+  DebtPayment,
+  PayableDebt,
+  PayablePayment,
+  FeedMovement,
+  SystemLog,
+  FlockMovement,
 } from './types';
 import { db as localDexieDb } from './db-local';
+import { logSystemEvent } from './logger';
 
 async function fetchApi<T>(resource: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`/api/db?resource=${resource}`, {
@@ -31,7 +39,20 @@ async function fetchApi<T>(resource: string, options?: RequestInit): Promise<T> 
     },
   });
   if (!res.ok) {
-    throw new Error(`API Error: ${res.statusText}`);
+    let errDetail = res.statusText;
+    try {
+      const body = await res.json();
+      if (body?.error) errDetail = body.error;
+    } catch {}
+    if (!resource.startsWith('systemLogs')) {
+      logSystemEvent({
+        level: 'error',
+        source: 'api',
+        message: `فشل الاتصال بـ ${resource} (${res.status})`,
+        details: errDetail,
+      });
+    }
+    throw new Error(`API Error: ${errDetail}`);
   }
   return res.json();
 }
@@ -92,6 +113,9 @@ function createTableHandler<T extends { id?: number }>(resource: string, localTa
       }
     },
     clear: async (): Promise<any> => {
+      try {
+        await fetchApi(`${resource}&clear=true`, { method: 'DELETE' });
+      } catch (e) {}
       return localTable.clear ? localTable.clear() : Promise.resolve();
     },
     count: async (): Promise<number> => {
@@ -216,6 +240,69 @@ export const db = {
     count: async () => 0,
   }),
   cooperativeMeetings: createTableHandler<CooperativeMeeting>('cooperativeMeetings', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
+  customers: createTableHandler<Customer>('customers', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
+  debtPayments: createTableHandler<DebtPayment>('debtPayments', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
+  payableDebts: createTableHandler<PayableDebt>('payableDebts', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
+  payablePayments: createTableHandler<PayablePayment>('payablePayments', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
+  feedMovements: createTableHandler<FeedMovement>('feedMovements', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
+  systemLogs: createTableHandler<SystemLog>('systemLogs', {
+    toArray: async () => [],
+    get: async () => undefined,
+    add: async () => 1,
+    update: async () => {},
+    delete: async () => {},
+    clear: async () => {},
+    count: async () => 0,
+  }),
+  flockMovements: createTableHandler<FlockMovement>('flockMovements', {
     toArray: async () => [],
     get: async () => undefined,
     add: async () => 1,

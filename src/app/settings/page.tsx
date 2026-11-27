@@ -13,6 +13,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saved, setSaved] = useState(false);
   const [showReset, setShowReset] = useState(false);
+  const [showLoadRealConfirm, setShowLoadRealConfirm] = useState(false);
   const [importStatus, setImportStatus] = useState('');
 
   useEffect(() => {
@@ -46,34 +47,23 @@ export default function SettingsPage() {
   }
 
   async function exportBackup() {
-    const data = {
-      settings: await db.settings.toArray(),
-      incubatorBatches: await db.incubatorBatches.toArray(),
-      rearingBatches: await db.rearingBatches.toArray(),
-      rearingWeeklyLogs: await db.rearingWeeklyLogs.toArray(),
-      dailyProduction: await db.dailyProduction.toArray(),
-      sales: await db.sales.toArray(),
-      expenses: await db.expenses.toArray(),
-      flockGroups: await db.flockGroups.toArray(),
-      investors: await db.investors.toArray(),
-      valuationItems: await db.valuationItems.toArray(),
-      cooperativeProfile: await db.cooperativeProfile.toArray(),
-      cooperativeMembers: await db.cooperativeMembers.toArray(),
-      cooperativeTransactions: await db.cooperativeTransactions.toArray(),
-      cooperativeMeetings: await db.cooperativeMeetings.toArray(),
-      expansionPlans: await db.expansionPlans.toArray(),
-      expansionPlanMonths: await db.expansionPlanMonths.toArray(),
-      alerts: await db.alerts.toArray(),
-      exportDate: new Date().toISOString(),
-      version: '1.1.0',
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `poultry-backup-${new Date().toISOString().split('T')[0]}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const res = await fetch('/api/backup');
+      if (!res.ok) throw new Error('فشل التصدير');
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `poultry-backup-${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setImportStatus('✅ تم تصدير نسخة احتياطية كاملة (جميع الجداول الـ 24)');
+      setTimeout(() => setImportStatus(''), 5000);
+    } catch {
+      setImportStatus('❌ خطأ أثناء تصدير النسخة الاحتياطية');
+      setTimeout(() => setImportStatus(''), 5000);
+    }
   }
 
   async function importBackup(file: File) {
@@ -81,30 +71,24 @@ export default function SettingsPage() {
       const text = await file.text();
       const data = JSON.parse(text);
 
-      if (data.incubatorBatches) { await db.incubatorBatches.clear(); await db.incubatorBatches.bulkAdd(data.incubatorBatches); }
-      if (data.rearingBatches) { await db.rearingBatches.clear(); await db.rearingBatches.bulkAdd(data.rearingBatches); }
-      if (data.rearingWeeklyLogs) { await db.rearingWeeklyLogs.clear(); await db.rearingWeeklyLogs.bulkAdd(data.rearingWeeklyLogs); }
-      if (data.dailyProduction) { await db.dailyProduction.clear(); await db.dailyProduction.bulkAdd(data.dailyProduction); }
-      if (data.sales) { await db.sales.clear(); await db.sales.bulkAdd(data.sales); }
-      if (data.expenses) { await db.expenses.clear(); await db.expenses.bulkAdd(data.expenses); }
-      if (data.flockGroups) { await db.flockGroups.clear(); await db.flockGroups.bulkAdd(data.flockGroups); }
-      if (data.investors) { await db.investors.clear(); await db.investors.bulkAdd(data.investors); }
-      if (data.valuationItems) { await db.valuationItems.clear(); await db.valuationItems.bulkAdd(data.valuationItems); }
-      if (data.cooperativeMembers) { await db.cooperativeMembers.clear(); await db.cooperativeMembers.bulkAdd(data.cooperativeMembers); }
-      if (data.cooperativeTransactions) { await db.cooperativeTransactions.clear(); await db.cooperativeTransactions.bulkAdd(data.cooperativeTransactions); }
-      if (data.cooperativeMeetings) { await db.cooperativeMeetings.clear(); await db.cooperativeMeetings.bulkAdd(data.cooperativeMeetings); }
-      if (data.settings && data.settings.length > 0) {
-        await db.settings.clear();
-        await db.settings.bulkAdd(data.settings);
-        const s = await getSettings();
-        setSettings(s);
+      const res = await fetch('/api/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody?.error || 'فشل الاستيراد');
       }
 
-      setImportStatus('✅ تم استيراد البيانات بنجاح');
+      const s = await getSettings();
+      setSettings(s);
+      setImportStatus('✅ تم استيراد جميع البيانات بنجاح ومزامنة قاعدة البيانات!');
       setTimeout(() => setImportStatus(''), 5000);
     } catch (err) {
-      setImportStatus('❌ خطأ في استيراد الملف');
-      setTimeout(() => setImportStatus(''), 5000);
+      const msg = err instanceof Error ? err.message : 'خطأ في استيراد الملف';
+      setImportStatus(`❌ خطأ في استيراد الملف: ${msg}`);
+      setTimeout(() => setImportStatus(''), 6000);
     }
   }
 
@@ -239,7 +223,7 @@ export default function SettingsPage() {
         <Card className="p-5">
           <h3 className="font-bold text-slate-800 mb-4">📦 إدارة البيانات</h3>
           <div className="flex flex-wrap gap-3">
-            <button onClick={loadRealData} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition">
+            <button onClick={() => setShowLoadRealConfirm(true)} className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition">
               <RefreshCw className="w-5 h-5" />
               تطبيق بيانات المزرعة الحقيقية
             </button>
@@ -264,6 +248,15 @@ export default function SettingsPage() {
       </div>
 
       <ConfirmDialog isOpen={showReset} onClose={() => setShowReset(false)} onConfirm={resetDefaults} title="إعادة تعيين الإعدادات" message="سيتم إعادة جميع الإعدادات إلى القيم الافتراضية. هل أنت متأكد؟" confirmLabel="إعادة تعيين" confirmColor="red" />
+      <ConfirmDialog
+        isOpen={showLoadRealConfirm}
+        onClose={() => setShowLoadRealConfirm(false)}
+        onConfirm={loadRealData}
+        title="تأكيد تصفير واستعادة البيانات الافتراضية"
+        message="تحذير: هذا الإجراء سيقوم بمسح سجلات الإنتاج اليومي والمبيعات والمصاريف والفقاسة والتربية الحالية واستبدالها بالبيانات الأولية للمزرعة. هل أنت متأكد من المتابعة؟"
+        confirmLabel="نعم، تصفير وإعادة التحميل"
+        confirmColor="red"
+      />
     </AppShell>
   );
 }
